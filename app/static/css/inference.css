@@ -1,0 +1,552 @@
+/* --- css/inference.css --- */
+
+#inference-content .inference-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 0;
+    margin-bottom: 20px;
+    gap: 20px;
+    min-height: 50px;
+    box-sizing: border-box;
+}
+
+#inference-content .inference-controls-row > * {
+    flex-shrink: 0;
+    height: 50px; 
+    box-sizing: border-box;
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+}
+
+#inference-content .model-folder-button {
+    flex-grow: 1; 
+    flex-basis: 0; 
+}
+
+#inference-content .inference-dropdown-container { 
+    flex-grow: 4; 
+    flex-basis: 0;
+    display: flex;
+}
+
+#inference-content #model-select {
+    width: 100%;
+    height: 100%;
+    padding: 0 15px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 1em;
+    cursor: pointer;
+    background-color: #fff;
+    box-sizing: border-box;
+}
+
+#inference-content #model-select:invalid {
+    color: #999;
+}
+
+
+#inference-content .load-model-button {
+    flex-grow: 1;
+    flex-basis: 0;
+}
+
+#inference-content .inference-button {
+    border: none;
+    border-radius: 10px;
+    padding: 0 15px;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.1s ease;
+    font-weight: bold;
+    font-size: 1em;
+    color: #333;
+    overflow: hidden;
+    text-align: center;
+}
+
+#inference-content .inference-button:hover {
+    opacity: 0.9;
+}
+#inference-content .inference-button:active {
+    transform: scale(0.98);
+}
+
+#inference-content .model-folder-button {
+    background-color: #ffcc00;
+    color: #4d3d00;
+}
+
+#inference-content .model-folder-button svg {
+    width: 28px;
+    height: 28px;
+    fill: #4d3d00;
+}
+
+#inference-content .load-model-button {
+    color: white;
+}
+
+#inference-content .load-model-button.state-load {
+    background-color: #007bff;
+}
+
+#inference-content .load-model-button.state-waiting {
+    background-color: #add8e6;
+    color: #333;
+    cursor: wait;
+}
+
+#inference-content .load-model-button.state-eject {
+    background-color: #dc3545;
+}
+
+@media (max-width: 768px) {
+    #inference-content .inference-controls-row {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+        height: auto;
+        padding: 15px;
+    }
+     #inference-content .inference-controls-row > * {
+        height: 45px;
+        flex-grow: 0 !important;
+        flex-basis: auto !important;
+     }
+    #inference-content #model-select {
+         padding: 0 10px;
+    }
+    #inference-content .inference-button {
+        font-size: 0.9em;
+    }
+     #inference-content .model-folder-button svg {
+         width: 24px;
+         height: 24px;
+     }
+}
+
+.inference-upload-area {
+    position: relative;
+    width: 75%;
+    max-width: 680px;
+    margin: 40px auto 20px auto;
+}
+
+.upload-box {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background-color: #f0f0f0;
+    border: 2px dashed #cccccc;
+    border-radius: 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+    overflow: hidden;
+}
+
+.upload-box:hover {
+    background-color: #e8e8e8;
+    border-color: #bbbbbb;
+}
+
+.upload-icon-container {
+    width: 70px;
+    height: 70px;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.upload-icon-container svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    fill: #888888;
+    transition: fill 0.3s ease;
+}
+
+.upload-box:hover .upload-icon-container svg {
+    fill: #666666;
+}
+
+.upload-icon-container .folder-icon {
+    display: none;
+}
+
+.upload-box.uploaded .upload-icon-container .folder-icon {
+    display: block;
+    fill: #ffcc00;
+}
+.upload-box.uploaded .upload-icon-container .plus-icon {
+    display: none;
+}
+
+.upload-text {
+    color: #777777;
+    font-size: 1em;
+    font-weight: 500;
+    text-align: center;
+    transition: color 0.3s ease;
+}
+
+.upload-box:hover .upload-text {
+    color: #555555;
+}
+
+.clear-upload-button {
+    position: absolute;
+    top: -12px; 
+    right: -12px;
+    width: 32px;
+    height: 32px;
+    background-color: transparent;
+    border: none;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0; 
+    visibility: hidden;
+    transform: scale(0.8); 
+    transition: opacity 0.3s ease, visibility 0s linear 0.3s, transform 0.3s ease;
+    z-index: 5; 
+}
+
+.clear-upload-button.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1);
+    transition: opacity 0.3s ease, visibility 0s linear 0s, transform 0.3s ease;
+}
+
+.clear-upload-button svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.clear-upload-button:hover {
+    transform: scale(1.1); 
+}
+
+@media (max-width: 768px) {
+    .inference-upload-area {
+        width: 90%;
+        margin-top: 30px;
+    }
+    .upload-icon-container {
+        width: 50px;
+        height: 50px;
+        margin-bottom: 10px;
+    }
+    .upload-text {
+        font-size: 0.9em;
+    }
+    .clear-upload-button {
+        width: 28px;
+        height: 28px;
+        top: -10px;
+        right: -10px;
+    }
+}
+
+.inference-metrics-area {
+    width: 100%;
+    margin: 20px auto 20px auto;
+    padding: 15px 20px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px; 
+    display: flex;
+    flex-wrap: wrap; 
+    gap: 15px 25px; 
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+.metric-item {
+    display: flex;
+    align-items: baseline; 
+    font-size: 0.95em;
+    color: #495057; 
+    min-width: 120px; 
+    justify-content: space-between;
+}
+
+.metric-label {
+    font-weight: 600;
+    margin-right: 8px;
+    color: #343a40; 
+    white-space: nowrap; 
+}
+
+.metric-value {
+    font-family: monospace; 
+    color: #007bff;
+    text-align: right;
+}
+
+.inference-action-buttons {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+    margin: 20px auto 30px auto; 
+    box-sizing: border-box;
+}
+
+.inference-action-button {
+    flex-grow: 1;
+    flex-basis: 0;
+    height: 50px;
+    border: none;
+    border-radius: 10px;
+    padding: 0 15px;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.1s ease, opacity 0.3s ease;
+    font-weight: bold;
+    font-size: 1.1em;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.inference-action-button:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.inference-action-button:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.settings-button {
+    background-color: #2196F3; /* 蓝色 */
+}
+.settings-button:hover:not(:disabled) {
+     background-color: #1e88e5;
+}
+
+.start-button {
+    background-color: #ff9800; /* 橙色 */
+}
+.start-button:hover:not(:disabled) {
+     background-color: #fb8c00;
+}
+
+.save-button {
+    background-color: #4CAF50; /* 绿色 */
+}
+.save-button:hover:not(:disabled) {
+    background-color: #43A047;
+}
+
+.inference-action-button:disabled {
+    background-color: #cccccc; 
+    color: #888888; 
+    cursor: not-allowed; 
+    opacity: 0.7;
+}
+
+
+@media (max-width: 768px) {
+    .inference-metrics-area,
+    .inference-action-buttons {
+        width: 90%; 
+    }
+    .metric-item {
+        font-size: 0.9em;
+        min-width: 100px;
+    }
+    .inference-action-button {
+        height: 45px;
+        font-size: 1em;
+    }
+    .inference-action-buttons {
+       gap: 15px;
+    }
+}
+@media (max-width: 480px) {
+    .inference-metrics-area {
+        gap: 10px 15px; 
+        padding: 10px 15px;
+    }
+     .metric-item {
+        flex-basis: 100%; 
+        justify-content: space-between;
+     }
+    .inference-action-buttons {
+        flex-direction: column; 
+        gap: 10px;
+    }
+    .inference-action-button {
+        width: 100%; 
+    }
+}
+
+/* --- Settings Panel Enhancements --- */
+.settings-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px 30px;
+    margin-bottom: 30px;
+}
+
+.setting-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.setting-label {
+    font-size: 0.95em;
+    color: #555;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.setting-slider {
+    width: 100%;
+    cursor: pointer;
+    margin-bottom: 2px;
+}
+
+.setting-value {
+    font-size: 0.9em;
+    color: #333;
+    align-self: flex-end;
+    min-width: 30px;
+    text-align: right;
+}
+
+.setting-input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 0.9em;
+    box-sizing: border-box;
+}
+.setting-input:focus {
+    outline: none;
+    border-color: #66afe9;
+    box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
+}
+
+
+.setting-radio-group label {
+    margin-right: 15px;
+    font-size: 0.9em;
+    cursor: pointer;
+}
+.setting-radio-group input[type="radio"] {
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+.setting-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+/* --- Import/Export Buttons --- */
+.settings-io-buttons {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.setting-io-button {
+    flex-grow: 1;
+    padding: 12px 15px;
+    font-size: 1em;
+    font-weight: 500;
+    color: #fff;
+    background-color: #5c9ded;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.setting-io-button:first-child {
+    background-color: #6c757d;
+}
+
+
+.setting-io-button:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+.setting-io-button:active {
+     transform: translateY(0px);
+     opacity: 1;
+}
+
+@media (max-width: 600px) {
+    .settings-form-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    .settings-io-buttons {
+        flex-direction: column;
+    }
+    .setting-io-button {
+       width: 100%;
+    }
+}
+
+#inference-upload-box {
+    position: relative;
+}
+
+.image-preview-container {
+    transition: opacity 0.3s ease;
+}
+
+.atlas-controls button {
+    transition: opacity 0.2s ease;
+}
+.atlas-controls button:hover:not(:disabled) {
+    opacity: 0.7;
+}
+.atlas-controls button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+#inference-upload-box .upload-icon,
+#inference-upload-box #inference-upload-text {
+    display: block;
+    transition: opacity 0.3s ease;
+    opacity: 1;
+    position: relative;
+    z-index: 1;
+}
+
+#inference-upload-box.uploaded .upload-icon,
+#inference-upload-box.uploaded #inference-upload-text.default-text {
+    opacity: 0;
+    pointer-events: none;
+    display: none;
+}
+
+#inference-upload-box.uploaded #inference-upload-text {
+     display: none;
+}

@@ -1,0 +1,128 @@
+/* --- 右上角登录/注册链接 --- */
+.auth-links {
+    position: absolute;
+    top: 25px;
+    right: 30px;
+    z-index: 10;
+    display: flex;
+    gap: 15px;
+}
+
+.auth-links a {
+    color: #444;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: bold;
+    transition: color 0.2s ease;
+}
+
+.auth-links a:hover {
+    color: #007bff;
+}
+
+/* --- 登录/注册面板通用样式 --- */
+.auth-panel {
+    padding: 30px 35px;
+    padding-top: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- 登录/注册面板内部元素 --- */
+.auth-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #555;
+    font-size: 1em;
+}
+
+.auth-input {
+    width: 100%;
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-sizing: border-box;
+    font-size: 1em;
+    transition: border-color 0.2s ease;
+}
+
+.auth-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.password-container .auth-input {
+    margin-bottom: 10px;
+}
+
+.auth-spacer {
+    flex-grow: 1;
+    min-height: 100px;
+}
+
+.auth-action-button {
+    width: 100%;
+    padding: 14px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    margin-top: 15px;
+    margin-bottom: 25px;
+}
+
+.auth-action-button:hover {
+    background-color: #0056b3;
+}
+
+.auth-action-button:active {
+    transform: scale(0.98);
+}
+
+@media (max-width: 480px) {
+    .auth-panel {
+        padding: 25px 20px;
+        padding-top: 50px;
+    }
+    .auth-title {
+        font-size: 1.8em;
+        margin-bottom: 25px;
+    }
+    .auth-label {
+        font-size: 0.9em;
+        margin-bottom: 6px;
+    }
+    .auth-input {
+        padding: 10px 12px;
+        margin-bottom: 15px;
+        font-size: 1em;
+    }
+    .password-container {
+        margin-bottom: 3px;
+    }
+    .show-password-container {
+        margin-top: 6px;
+        margin-bottom: 20px;
+    }
+    .show-password-label {
+        font-size: 0.85em;
+    }
+    .auth-action-button {
+        padding: 12px;
+        font-size: 1em;
+        margin-top: 10px;
+    }
+}

@@ -1,0 +1,41 @@
+# 服务器配置
+SERVER_HOST: "0.0.0.0" # 监听网络接口
+SERVER_PORT: 5001      # HTTPS 端口
+
+# 应用密钥，用于 Session 加密等
+SECRET_KEY: "change-this-to-a-very-secchange-this-to-a-very-secret-and-random-stringret-and-randochange-this-to-change-this-to-a-very-secret-and-random-stringa-very-secret-and-random-stringm-stringchange-this-to-a-very-secret-and-random-string"
+
+# 数据库配置 (SQLite)
+DATABASE_URI: "sqlite:///./database.db" # 数据库文件路径，相对于 main.py
+
+# SSL 证书配置 (相对于 main.py 的路径)
+CERT_FILE: "cert/cert.pem"
+KEY_FILE: "cert/key.pem"
+
+# Session 配置
+SESSION_TYPE: "filesystem" # Session 存储方式
+SESSION_FILE_DIR: "./.flask_session" # Session 文件存储目录
+SSL_PEM_FILE: "cert/combined.pem" # 合并后的文件路径
+SESSION_PERMANENT: False # 关闭浏览器后 Session 失效
+SESSION_USE_SIGNER: True # 对 Session cookie 进行签名
+SESSION_KEY_PREFIX: "session:"
+
+# 业务配置
+MODEL_DIR: "user_models" # 用户模型存储路径(str)
+UPLOAD_DIR: "user_uploads" # 用户文件缓存路径(str)
+USER_SESSION_TTL: 600 # 用户会话数据最大缓存时间/秒(int)
+INFERENCE_WORKERS: 4 # 推理池最大线程数（int）
+ALLOWED_MODEL_EXTENSIONS: ['.pt', '.onnx'] # 允许用户上传至服务器的模型后缀(list)
+MODEL_MAX_IDLE_SECONDS: 600    # 模型最大闲置时间 (秒)
+MODEL_CLEANUP_INTERVAL_SECONDS: 60 # 清理任务检查频率 (秒)
+PRESET_MODELS_DIR: "models" # 相对于项目根目录
+
+# Celery 配置
+CELERY_BROKER_URL: "redis://localhost:6379/0"  # Celery Broker URL (使用Redis的0号数据库)
+CELERY_RESULT_BACKEND: "redis://localhost:6379/1" # Celery Result Backend URL (使用Redis的1号数据库)
+CELERY_TASK_TRACK_STARTED: True # 允许任务报告 'started' 状态
+CELERY_TASK_SERIALIZER: 'json' # 任务序列化方式
+CELERY_RESULT_SERIALIZER: 'json' # 结果序列化方式
+CELERY_ACCEPT_CONTENT: ['json'] # 可接受的内容类型
+CELERY_TIMEZONE: 'UTC' # 时区设置 (建议使用UTC)
+CELERY_ENABLE_UTC: True

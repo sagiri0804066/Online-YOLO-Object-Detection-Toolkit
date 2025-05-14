@@ -1,0 +1,387 @@
+/* task.css */
+
+.task-list-header,
+.task-list-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.task-list-header {
+    background-color: #f8f9fa;
+    font-weight: bold;
+    color: #495057;
+}
+
+.task-list-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 0 5px;
+}
+
+.task-list-item {
+    transition: background-color 0.15s ease;
+}
+
+.task-list-item:hover {
+    background-color: #f8f8f8;
+}
+
+.task-list-item span {
+    color: #333;
+    font-size: 0.95em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 10px;
+}
+.task-list-item span:last-child {
+    padding-right: 0;
+}
+
+.task-list-header.finetune-header .header-ft-name,
+.task-list-item .finetune-col-name {
+    flex: 3; min-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.task-list-header.finetune-header .header-ft-pid,
+.task-list-item .finetune-col-pid {
+    flex: 2; min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.task-list-header.finetune-header .header-ft-status,
+.task-list-item .finetune-col-status {
+    flex: 1.5; min-width: 90px; text-align: center;
+}
+.task-list-header.finetune-header .header-ft-actions,
+.task-list-item .finetune-col-actions {
+    flex-basis: 170px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+}
+
+.task-list-header.validate-header .header-val-name,
+.task-list-item .validate-col-name {
+    flex: 3; min-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.task-list-header.validate-header .header-val-pid,
+.task-list-item .validate-col-pid {
+    flex: 2; min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.task-list-header.validate-header .header-val-status,
+.task-list-item .validate-col-status {
+    flex: 1.5; min-width: 90px; text-align: center;
+}
+.task-list-header.validate-header .header-val-actions,
+.task-list-item .validate-col-actions {
+    flex-basis: 170px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+}
+
+.task-progress-bar {
+    width: 100%;
+    height: 10px;
+    background-color: #e9ecef;
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+}
+
+.task-progress-bar-inner {
+    height: 100%;
+    background-color: #007bff;
+    border-radius: 5px;
+    transition: width 0.3s ease-out;
+    width: 0%;
+}
+
+.task-action-button {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    min-width: 70px;
+    text-align: center;
+    color: white;
+    line-height: 1.5;
+}
+.task-action-button:active {
+    transform: scale(0.97);
+}
+.task-action-button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.details-task-button {
+    background-color: #007bff;
+}
+.details-task-button:hover {
+    background-color: #0056b3;
+}
+
+.delete-task-button {
+    background-color: #dc3545;
+}
+.delete-task-button:hover {
+    background-color: #c82333;
+}
+
+.cancel-task-button {
+    background-color: #ffc107;
+    color: #333;
+}
+.cancel-task-button:hover {
+    background-color: #e0a800;
+}
+
+.download-task-button {
+    background-color: #28a745;
+}
+.download-task-button:hover {
+    background-color: #218838;
+}
+
+.error-task-button {
+    background-color: #dc3545;
+}
+.error-task-button:hover {
+     background-color: #c82333;
+}
+
+.no-tasks-message {
+    color: #888;
+    padding: 30px;
+    text-align: center;
+    font-size: 1em;
+}
+
+.status-pending,
+.status-queued {
+    color: #ffc107 !important; /* 黄色 */
+    font-weight: bold;
+}
+.status-running,
+.status-completed {
+    color: #28a745 !important; /* 绿色 */
+    font-weight: bold;
+}
+.status-failed,
+.status-cancelled {
+    color: #dc3545 !important; /* 红色 */
+    font-weight: bold;
+}
+
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    padding: 20px;
+    box-sizing: border-box;
+    visibility: visible;
+    opacity: 1;
+}
+
+.task-details-modal {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 650px;
+    max-height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+    z-index: 1001;
+    overflow: hidden;
+    position: relative;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.modal-title {
+    font-size: 1.3em;
+    font-weight: 500;
+    color: #343a40;
+    margin: 0;
+}
+
+.task-details-modal .settings-panel-close-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+}
+.task-details-modal .settings-panel-close-button svg {
+    width: 22px;
+    height: 22px;
+}
+.task-details-modal .settings-panel-close-button:hover svg path {
+    fill: #343a40;
+}
+
+
+.modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex-grow: 1;
+    line-height: 1.6;
+}
+
+.detail-item {
+    display: flex;
+    margin-bottom: 14px;
+    font-size: 0.98em;
+}
+
+.detail-label {
+    font-weight: 600;
+    color: #495057;
+    min-width: 130px;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.detail-value {
+    color: #212529;
+    word-break: break-word;
+}
+.detail-value.allow-newline {
+    white-space: pre-wrap;
+    font-family: monospace;
+    background-color: #f8f9fa;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.progress-detail-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 14px;
+    font-size: 0.98em;
+}
+.progress-detail-item .detail-label {
+    min-width: 130px;
+    margin-right: 12px;
+}
+
+.progress-detail-content {
+    display: flex;
+    align-items: center;
+    flex-grow: 1;
+}
+
+.detail-progress-bar {
+    flex-grow: 1;
+    max-width: 250px;
+    height: 14px;
+    background-color: #e9ecef;
+    border-radius: 7px;
+    overflow: hidden;
+    margin-right: 12px;
+}
+
+.detail-progress-bar-inner {
+    height: 100%;
+    background-color: #007bff;
+    border-radius: 7px;
+    transition: width 0.3s ease-out;
+    text-align: center;
+    color: white;
+    font-size: 0.8em;
+    line-height: 14px;
+}
+
+.progress-text {
+    color: #212529;
+    min-width: 70px;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 16px 24px;
+    border-top: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+}
+
+.modal-footer .task-action-button {
+    margin-left: 10px;
+    font-size: 0.9em;
+    padding: 8px 15px;
+}
+
+.download-log-button {
+    background-color: #17a2b8;
+}
+.download-log-button:hover {
+    background-color: #138496;
+}
+
+.main-action-button.cancel-task {
+    background-color: #ffc107; 
+    color: #212529; 
+}
+.main-action-button.cancel-task:hover {
+    background-color: #e0a800;
+}
+
+.main-action-button.download-model {
+    background-color: #28a745;
+}
+.main-action-button.download-model:hover {
+    background-color: #218838;
+}
+
+.hidden {
+    display: none !important;
+}

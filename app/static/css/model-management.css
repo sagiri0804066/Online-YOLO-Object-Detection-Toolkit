@@ -1,0 +1,121 @@
+/* --- css/model-management.css --- */
+
+#model-management-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    position: relative;
+    padding-top: 65px;
+    box-sizing: border-box;
+}
+
+.model-management-button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: bold;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.upload-model-button {
+    background-color: #007bff;
+    color: white;
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    z-index: 10;
+    width: 130px;
+}
+
+.upload-model-button:hover {
+    background-color: #0056b3;
+}
+.upload-model-button:active {
+     transform: scale(0.98);
+}
+
+.model-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    font-weight: bold;
+    color: #495057;
+    flex-shrink: 0;
+}
+
+.header-name, .model-name { flex: 3; margin-right: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-date, .model-date { flex: 2; margin-right: 10px; text-align: center; }
+.header-size, .model-size { flex: 1; margin-right: 10px; text-align: right; }
+.header-actions, .model-item-actions { flex: 2; text-align: right; }
+
+#model-list-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 0 5px;
+}
+
+.model-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 10px;
+    border-bottom: 1px solid #eee;
+    transition: background-color 0.15s ease;
+}
+
+.model-list-item:hover {
+    background-color: #f8f8f8;
+}
+
+.model-list-item span {
+    color: #333;
+    font-size: 0.95em;
+}
+
+.model-item-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.model-action-button {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    min-width: 60px;
+    text-align: center;
+}
+
+.delete-model-button {
+    background-color: #dc3545;
+    color: white;
+}
+.delete-model-button:hover {
+    background-color: #c82333;
+}
+
+.download-model-button {
+    background-color: #6c757d;
+    color: white;
+}
+.download-model-button:hover {
+    background-color: #5a6268;
+}
+
+.model-action-button:active {
+    transform: scale(0.97);
+}
+
+#no-models-message {
+    color: #888;
+    padding: 30px;
+    text-align: center;
+}
