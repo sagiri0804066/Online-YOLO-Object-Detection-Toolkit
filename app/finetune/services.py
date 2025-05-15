@@ -305,21 +305,22 @@ class FinetuneService:
             "generated_config_yaml_name": task.generated_config_yaml_name,
             "output_dir_name": task.output_dir_name,
             "log_file_name": task.log_file_name,
-            # "current_epoch": task.current_epoch, # 将移入 progress 对象
-            # "total_epochs": task.total_epochs,   # 将移入 progress 对象
-            # "metrics": metrics, # 可以选择是否将整个原始metrics对象也返回
             "error_message": task.error_message,
-            "error_code": task.error_code if hasattr(task, 'error_code') else None,  # 如果添加了 error_code 字段
+            "error_code": task.error_code if hasattr(task, 'error_code') else None,
             "queue_position": None,
             "progress": None,
-            "best_epoch": None
+            "best_epoch": None,
+            "metrics": metrics
         }
 
         if task.status == 'running':
+            # 在 running 状态下，progress 对象可以包含一些直接字段，
+            # 但详细指标现在可以直接从 task.metrics 中获取
             progress_info = {
                 "current_epoch": task.current_epoch,
                 "total_epochs": task.total_epochs,
-                "speed": metrics.get("speed", None)  # 假设 speed 存在 metrics 中
+                # speed 等详细指标现在从 task.metrics 获取更灵活
+                # "speed": metrics.get("speed", None) # 此行可以移除或保留，但前端将直接读 metrics
             }
             details["progress"] = progress_info
 
@@ -333,27 +334,25 @@ class FinetuneService:
             found_in_global_queue = False
 
             for i, queued_task_global in enumerate(all_queued_tasks_of_type):
-                if queued_task_global.id == task_id:  # 比较的是当前查看的任务ID
-                    current_task_global_position = i + 1  # 位置从1开始
+                if queued_task_global.id == task_id:
+                    current_task_global_position = i + 1
                     found_in_global_queue = True
                     break
 
             if found_in_global_queue:
                 details["queue_position"] = {
                     "position": current_task_global_position,
-                    "total": total_queued_globally  # 这是全局队列的总数
+                    "total": total_queued_globally
                 }
             else:  # pragma: no cover
-                # 如果一个任务状态是 queued，它理论上应该在全局队列查询中被找到
-                # 但如果它刚被worker拿起，状态还没来得及更新，可能会有短暂的不一致
                 self.app.logger.warning(
                     f"任务 {task_id} 状态为 queued 但在全局队列查询中未找到，无法计算全局排队位置。"
                 )
-                # 此时 queue_position 保持 None，前端可以显示 "正在获取..." 或类似
 
         elif task.status == 'completed':
-            details["best_epoch"] = metrics.get("best_epoch", None)  # 假设 best_epoch 存在 metrics 中
-            # 或者 task.best_epoch_number if hasattr(task, 'best_epoch_number') else None
+            # best_epoch 仍然可以放在顶层，方便访问
+            details["best_epoch"] = metrics.get("best_epoch", None)
+            # 详细的最终指标现在从 task.metrics 获取
 
         return details
 

@@ -2,19 +2,17 @@
 import os
 import logging
 import json
-import time  # 仍然需要 time.sleep 用于某些场景，但主要训练/验证不再依赖它
-import shutil  # 用于文件操作
+import shutil
 
 from app import create_app
 from app.celery_utils import make_celery
 from app.config import Config
 from flask import current_app
-from app.models import FinetuneTask, ValidateTask  # 确保 ValidateTask 也导入
+from app.models import FinetuneTask, ValidateTask
 from app.database import db
-from sqlalchemy.orm import sessionmaker, Session as SQLAlchemySession  # 用于回调的独立会话
+from sqlalchemy.orm import sessionmaker, Session as SQLAlchemySession
 
 # --- 从 app.ultralyticsCust 导入相关函数和回调 ---
-# 假设这些文件在 app/ultralyticsCust/ 目录下
 from app.ultralyticsCust.callbacks import FinetuneProgressCallback
 from app.ultralyticsCust.training import run_yolo_training
 from app.ultralyticsCust.validation import run_yolo_validation
@@ -174,8 +172,10 @@ def run_finetune_training_task(self, task_id: str, user_id: int):
         yolo_callbacks_for_train_func = [
             ('on_pretrain_routine_start', finetune_callback_instance.on_pretrain_routine_start),
             ('on_pretrain_routine_end', finetune_callback_instance.on_pretrain_routine_end),
+            ('on_train_batch_start', finetune_callback_instance.on_train_batch_start), # <-- 确保这一行被添加
             ('on_fit_epoch_end', finetune_callback_instance.on_fit_epoch_end),
             ('on_train_batch_end', finetune_callback_instance.on_train_batch_end),
+            ('on_model_save', finetune_callback_instance.on_model_save), # 也建议添加 on_model_save
             ('on_train_end', finetune_callback_instance.on_train_end),
             # 你可以添加更多YOLOv8支持的回调事件
         ]

@@ -2,8 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const finetuneSection = document.getElementById('finetune-content');
     if (!finetuneSection) return;
 
-    // --- DOM 元素 ---
-    // 左侧面板
+    // --- DOM 元素引用 ---
+    // 左侧面板元素
     const taskNameInput = document.getElementById('finetune-task-name-input');
     const presetModelSelect = document.getElementById('finetune-preset-model-select');
     const uploadModelButton = document.getElementById('finetune-upload-model-button');
@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const startFinetuneButton = document.getElementById('finetune-start-button');
 
-    // 右侧面板
+    // 右侧面板元素
     const importParamsButton = finetuneSection.querySelector('.action-buttons-panel .import-btn');
     const exportParamsButton = finetuneSection.querySelector('.action-buttons-panel .export-btn');
     const hiddenConfigImportInput = document.createElement('input');
@@ -91,8 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const originalUploadYamlBtnText = "配置 data.yaml";
 
     /**
-     * @function getParamsFromForm
-     * @description 从表单元素中提取参数值。
+     * 从表单元素中提取参数值。
      * @param {object} paramsMap - 参数键与HTML元素ID的映射。
      * @returns {object} 提取的参数对象。
      */
@@ -105,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     params[key] = element.checked;
                 } else if (element.type === 'number' || element.type === 'range') {
                     const val = parseFloat(element.value);
-                    params[key] = isNaN(val) ? element.value : val; // 保留非数字字符串
+                    params[key] = isNaN(val) ? element.value : val;
                 } else if (element.tagName === 'SELECT') {
                     if (element.value === 'true') params[key] = true;
                     else if (element.value === 'false') params[key] = false;
@@ -119,8 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * @function applyParamsToForm
-     * @description 将导入的参数应用到表单元素上。
+     * 将导入的参数应用到表单元素上。
      * @param {object} importedData - 包含参数的对象。
      * @param {object} paramsMap - 参数键与HTML元素ID的映射。
      */
@@ -147,8 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * @function resetFileInput
-     * @description 重置文件输入框及其相关的UI元素（按钮文本、图标、清除按钮状态）。
+     * 重置文件输入框及其相关的UI元素。
      * @param {HTMLInputElement} fileInput - 文件输入框元素。
      * @param {HTMLElement} buttonTextElement - 显示文件名的按钮内文本元素。
      * @param {string} originalText - 按钮的原始文本。
@@ -184,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
             presetModelSelect.disabled = true;
             uploadModelButton.title = file.name;
         } else {
-            if (!selectedModelFile) { // 仅当之前未选择文件时才重置
+            if (!selectedModelFile) {
                 selectedModelFile = resetFileInput(modelFileInput, uploadModelButtonText, originalUploadModelBtnText, clearModelButton);
                 presetModelSelect.disabled = false;
                 uploadModelButton.title = '';
@@ -249,6 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
+                    // 确保 js-yaml 库已加载
                     if (!window.jsyaml) {
                         showNotification(0, '导入参数失败：js-yaml 库未加载。');
                         console.error("js-yaml library is not loaded.");
@@ -268,10 +266,12 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             reader.readAsText(file);
         }
-        hiddenConfigImportInput.value = null; // 重置文件输入，以便再次选择相同文件
+        // 重置文件输入，以便再次选择相同文件
+        hiddenConfigImportInput.value = null;
     });
 
     exportParamsButton.addEventListener('click', () => {
+        // 确保 js-yaml 库已加载
         if (!window.jsyaml) {
             showNotification(0, '导出参数失败：js-yaml 库未加载。');
             console.error("js-yaml library is not loaded.");
@@ -348,8 +348,10 @@ document.addEventListener('DOMContentLoaded', () => {
         startFinetuneButton.disabled = true;
 
         try {
-            const result = await createFinetuneTask(formData); // 假设 createFinetuneTask 是已定义的API调用函数
+            // 假设 createFinetuneTask 是已定义的API调用函数
+            const result = await createFinetuneTask(formData);
             showNotification(2, result.message || `微调任务 "${taskName}" (ID: ${result.task_id}) 已成功创建。`);
+            // 刷新任务列表
             fetchFinetuneTasksAndUpdateList();
         } catch (error) {
             console.error("Error creating finetune task:", error);
@@ -361,29 +363,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 任务列表与详情轮询 ---
     let finetunePollingIntervalId = null;
-    const POLLING_INTERVAL_MS = 10000; // 列表轮询间隔
+    const POLLING_INTERVAL_MS = 10000; // 列表轮询间隔 (10秒)
     let currentDetailTaskId_Finetune = null; // 当前详情弹窗展示的任务ID
     let taskDetailPollingIntervalId_Finetune = null; // 任务详情弹窗轮询ID
-    const TASK_DETAIL_POLLING_INTERVAL_MS = 5000; // 任务详情轮询间隔
-
-    // --- UI 初始化 ---
-    if (clearModelButton) clearModelButton.classList.add('hidden');
-    if (uploadModelButton && presetModelSelect.value) uploadModelButton.disabled = true; // 如果有预设模型，则禁用上传按钮
-
-    if (clearDatasetButton) clearDatasetButton.classList.add('hidden');
-    if (uploadDatasetUploadedIcon) uploadDatasetUploadedIcon.classList.add('hidden');
-    if (uploadDatasetDefaultIcon) uploadDatasetDefaultIcon.classList.remove('hidden');
+    const TASK_DETAIL_POLLING_INTERVAL_MS = 5000; // 任务详情轮询间隔 (5秒)
 
     /**
-     * @function getDisplayStatus
-     * @description 将任务状态键映射为用户友好的显示文本。
+     * 将任务状态键映射为用户友好的显示文本。
      * @param {string} statusKey - 内部状态键。
      * @returns {string} 显示用的状态文本。
      */
     function getDisplayStatus(statusKey) {
         const statusMap = {
             'pending': '已提交',
-            'queued': '排队中',  
+            'queued': '排队中',
             'running': '进行中',
             'completed': '已成功',
             'failed': '已失败',
@@ -393,8 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * @function createFinetuneTaskListItem
-     * @description 创建微调任务列表项的 DOM 元素。
+     * 创建微调任务列表项的 DOM 元素。
      * @param {object} task - 任务对象。
      * @returns {HTMLElement} 列表项 DOM 元素。
      */
@@ -440,8 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * @function populateFinetuneTaskList
-     * @description 填充微调任务列表。
+     * 填充微调任务列表。
      * @param {Array|null} tasks - 任务对象数组，或在出错时为 null。
      */
     function populateFinetuneTaskList(tasks) {
@@ -474,6 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 listContainer.appendChild(listItem);
             });
         } else {
+            // 无法加载任务列表时显示消息
             noTasksMessage.classList.remove('hidden');
             noTasksMessage.textContent = "无法加载任务列表。";
             listContainer.classList.add('hidden');
@@ -482,8 +474,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * @function populateFinetuneTaskDetailsModalContent
-     * @description 填充微调任务详情弹窗的内容。
+     * 填充微调任务详情弹窗的内容。
      * @param {object} task - 任务对象。
      * @param {HTMLElement} taskDetailsBody - 弹窗内容主体区域。
      * @param {HTMLElement} taskDetailsFooter - 弹窗底部操作区域。
@@ -492,6 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
         taskDetailsBody.innerHTML = '';
         taskDetailsFooter.innerHTML = '';
 
+        // 创建普通详情项
         function createDetailItem(label, value, allowNewline = false) {
             const item = document.createElement('div');
             item.classList.add('detail-item');
@@ -507,6 +499,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return item;
         }
 
+        // 创建带进度条的详情项
         function createProgressDetailItem(label, currentValue, maxValue, displayText) {
             const item = document.createElement('div');
             item.classList.add('progress-detail-item');
@@ -521,6 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
             progressBarDiv.classList.add('detail-progress-bar');
             const progressBarInnerDiv = document.createElement('div');
             progressBarInnerDiv.classList.add('detail-progress-bar-inner');
+            // 计算进度百分比，确保在 0% 到 100% 之间
             const percentage = maxValue > 0 && currentValue >= 0 ? (currentValue / maxValue) * 100 : 0;
             progressBarInnerDiv.style.width = `${Math.min(100, Math.max(0, percentage))}%`;
             progressBarDiv.appendChild(progressBarInnerDiv);
@@ -534,48 +528,147 @@ document.addEventListener('DOMContentLoaded', () => {
             return item;
         }
 
-        taskDetailsBody.appendChild(createDetailItem('任务名称:', task.task_name)); 
-        taskDetailsBody.appendChild(createDetailItem('任务ID:', task.task_id)); 
+        // 显示任务基本信息
+        taskDetailsBody.appendChild(createDetailItem('任务名称:', task.task_name));
+        taskDetailsBody.appendChild(createDetailItem('任务ID:', task.task_id));
         const statusDisplay = getDisplayStatus(task.status);
         const statusItem = createDetailItem('任务状态:', statusDisplay);
         const statusValueSpan = statusItem.querySelector('.detail-value');
         if (statusValueSpan) statusValueSpan.classList.add(`status-${task.status}`);
         taskDetailsBody.appendChild(statusItem);
 
+        // 根据任务状态显示详细信息
         switch (task.status) {
             case 'running':
+                // 显示基本进度信息
                 if (task.progress) {
-                    taskDetailsBody.appendChild(createProgressDetailItem('训练轮次:', task.progress.current_epoch, task.progress.total_epochs, `${task.progress.current_epoch}/${task.progress.total_epochs}`));
-                    taskDetailsBody.appendChild(createDetailItem('训练速度:', task.progress.speed || 'N/A'));
+                    // 轮次进度 (带进度条)
+                    taskDetailsBody.appendChild(createProgressDetailItem(
+                        '训练轮次:',
+                        task.progress.current_epoch,
+                        task.progress.total_epochs,
+                        `${task.progress.current_epoch}/${task.progress.total_epochs}`
+                    ));
+
+                    // 批次进度 (从 metrics 中获取)
+                    const currentBatch = task.metrics?.current_batch;
+                    const totalBatches = task.metrics?.total_batches_in_epoch;
+                    if (currentBatch !== undefined && totalBatches !== undefined && totalBatches > 0) {
+                        taskDetailsBody.appendChild(createProgressDetailItem(
+                        '当前批次:',
+                        currentBatch,
+                        totalBatches,
+                         `${currentBatch}/${totalBatches}`
+                    ));
+                    } else {
+                        taskDetailsBody.appendChild(createDetailItem('当前批次:', '正在加载...'));
+                    }
+
+                    // 训练速度 (从 metrics 中获取)
+                    const speed = task.metrics?.iterations_per_second_batch;
+                    taskDetailsBody.appendChild(createDetailItem('训练速度:', speed !== undefined ? `${speed} it/s` : 'N/A'));
+
+                    // 显示当前训练损失 (从 metrics 中获取)
+                    taskDetailsBody.appendChild(createDetailItem('当前损失:', '')); // 添加一个标题或分组
+                    const boxLoss_train = task.metrics?.['train/box_loss']; // 注意键名中的斜杠
+                    const clsLoss_train = task.metrics?.['train/cls_loss'];
+                    const dflLoss_train = task.metrics?.['train/dfl_loss'];
+                    const boxLoss_val = task.metrics?.['val/box_loss'];
+                    const clsLoss_val = task.metrics?.['val/cls_loss'];
+                    const dflLoss_val = task.metrics?.['val/dfl_loss'];
+                    if (boxLoss_train !== undefined) taskDetailsBody.appendChild(createDetailItem(' - Box Loss:', boxLoss_train.toFixed(5))); // 保留小数点后5位
+                    else {if (boxLoss_val !== undefined) taskDetailsBody.appendChild(createDetailItem(' - Box Loss:', boxLoss_val.toFixed(5)))};
+                    if (clsLoss_train !== undefined) taskDetailsBody.appendChild(createDetailItem(' - Cls Loss:', clsLoss_train.toFixed(5)));
+                    else {if (clsLoss_val !== undefined) taskDetailsBody.appendChild(createDetailItem(' - Cls Loss:', clsLoss_val.toFixed(5)));}
+                    if (dflLoss_train !== undefined) taskDetailsBody.appendChild(createDetailItem(' - DFL Loss:', dflLoss_train.toFixed(5)));
+                    else {if (dflLoss_val !== undefined) taskDetailsBody.appendChild(createDetailItem(' - DFL Loss:', dflLoss_val.toFixed(5)));}
+                    // 可以根据需要添加更多训练损失指标
+
+                    // 显示当前验证指标 (这些是上一个轮次结束时的值，从 metrics 中获取)
+                    // 注意：这些指标只在轮次结束时更新，批次更新时不会变
+                    const mAP50 = task.metrics?.['metrics/mAP50(B)'];
+                    const mAP50_95 = task.metrics?.['metrics/mAP50-95(B)'];
+                    const precision = task.metrics?.['metrics/precision(B)'];
+                    const recall = task.metrics?.['metrics/recall(B)'];
+
+                    if (mAP50 !== undefined || mAP50_95 !== undefined || precision !== undefined || recall !== undefined) {
+                        taskDetailsBody.appendChild(createDetailItem('上轮验证指标:', '')); // 添加一个标题或分组
+                        if (mAP50 !== undefined) taskDetailsBody.appendChild(createDetailItem(' - mAP50:', mAP50.toFixed(5)));
+                        if (mAP50_95 !== undefined) taskDetailsBody.appendChild(createDetailItem(' - mAP50-95:', mAP50_95.toFixed(5)));
+                        if (precision !== undefined) taskDetailsBody.appendChild(createDetailItem(' - 精确率(P):', precision.toFixed(5)));
+                        if (recall !== undefined) taskDetailsBody.appendChild(createDetailItem(' - 召回率(R):', recall.toFixed(5)));
+                    }
+
+
                 } else {
+                    // 如果 progress 不存在，显示正在加载
                     taskDetailsBody.appendChild(createDetailItem('进度:', '正在获取进度...'));
                 }
                 break;
+
             case 'queued':
                 if (task.queue_position) {
                     taskDetailsBody.appendChild(createDetailItem('当前排队:', `${task.queue_position.position} / ${task.queue_position.total}`));
                 } else {
+                    // 如果 queue_position 不存在，可能是刚进入队列还没计算出来
+                    taskDetailsBody.appendChild(createDetailItem('当前排队:', '正在计算...'));
                 }
                 break;
+
             case 'failed':
                 taskDetailsBody.appendChild(createDetailItem('错误代码:', task.error_code || '未知错误'));
                 if (task.error_message) {
+                    // 假设 createDetailItem 支持多行显示
                     taskDetailsBody.appendChild(createDetailItem('详细信息:', task.error_message, true));
                 }
                 break;
+
             case 'completed':
+                // 显示最佳轮次
                 taskDetailsBody.appendChild(createDetailItem('最佳轮次:', task.best_epoch ? `Epoch ${task.best_epoch}` : 'N/A'));
-                break;
+
+                // 显示最终验证指标 (从 metrics 中获取)
+                const final_mAP50 = task.metrics?.['metrics/mAP50(B)'];
+                const final_mAP50_95 = task.metrics?.['metrics/mAP50-95(B)'];
+                const final_precision = task.metrics?.['metrics/precision(B)'];
+                const final_recall = task.metrics?.['metrics/recall(B)'];
+
+                if (final_mAP50 !== undefined || final_mAP50_95 !== undefined || final_precision !== undefined || final_recall !== undefined) {
+                    taskDetailsBody.appendChild(createDetailItem('最终验证指标:', '')); // 添加一个标题或分组
+                    if (final_mAP50 !== undefined) taskDetailsBody.appendChild(createDetailItem(' - mAP50:', final_mAP50.toFixed(5)));
+                    if (final_mAP50_95 !== undefined) taskDetailsBody.appendChild(createDetailItem(' - mAP50-95:', final_mAP50_95.toFixed(5)));
+                    if (final_precision !== undefined) taskDetailsBody.appendChild(createDetailItem(' - 精确率(P)', final_precision.toFixed(5)));
+                    if (final_recall !== undefined) taskDetailsBody.appendChild(createDetailItem(' - 召回率(R):', final_recall.toFixed(5)));
+                } else {
+                    taskDetailsBody.appendChild(createDetailItem('最终验证指标:', 'N/A (可能训练未正常完成)'));
+                }
+
             case 'cancelled':
                 taskDetailsBody.appendChild(createDetailItem('信息:', '任务已被用户取消。'));
+                // 如果需要，可以显示取消时的进度或状态
+                if (task.progress) {
+                    taskDetailsBody.appendChild(createDetailItem('取消时轮次:', `${task.progress.current_epoch}/${task.progress.total_epochs}`));
+                    // 还可以显示取消时的最新指标，从 task.metrics 中获取
+                }
+                if (task.error_message) {
+                    taskDetailsBody.appendChild(createDetailItem('取消原因:', task.error_message, true));
+                }
+                break;
+
+            default:
+                // 处理其他未知状态
+                taskDetailsBody.appendChild(createDetailItem('状态:', task.status || '未知'));
                 break;
         }
 
+
+        // 下载日志按钮
         const downloadLogButton = document.createElement('button');
         downloadLogButton.classList.add('task-action-button', 'download-log-button');
         downloadLogButton.textContent = '下载日志';
         downloadLogButton.addEventListener('click', async () => {
             try {
+                // 假设 getFinetuneTaskLogs 是已定义的API调用函数
                 const logData = await getFinetuneTaskLogs(task.task_id);
                 if (logData && logData.logs) {
                     const blob = new Blob([logData.logs], { type: 'text/plain' });
@@ -596,6 +689,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        // 主操作按钮 (取消或下载模型)
         const mainActionButton = document.createElement('button');
         mainActionButton.classList.add('task-action-button', 'main-action-button');
 
@@ -603,15 +697,17 @@ document.addEventListener('DOMContentLoaded', () => {
             mainActionButton.textContent = '取消任务';
             mainActionButton.classList.add('cancel-task');
             mainActionButton.addEventListener('click', async () => {
+                // 假设 showConfirmation 是已定义的确认弹窗函数
                 const userConfirmed = await showConfirmation(
                     `确定要取消任务 "${task.task_name}" (ID: ${task.task_id}) 吗？`
                 );
                 if (userConfirmed) {
                     try {
+                        // 假设 cancelFinetuneTask 是已定义的API调用函数
                         const result = await cancelFinetuneTask(task.task_id);
                         showNotification(2, result.message || `任务 ${task.task_id} 已成功请求取消。`);
                         closeFinetuneTaskDetailsPopup();
-                        fetchFinetuneTasksAndUpdateList();
+                        fetchFinetuneTasksAndUpdateList(); // 刷新列表以更新状态
                     } catch (error) {
                         console.error(`Error cancelling task ${task.task_id}:`, error);
                         showNotification(0, `取消任务失败: ${error.message}`);
@@ -623,6 +719,7 @@ document.addEventListener('DOMContentLoaded', () => {
             mainActionButton.classList.add('download-model');
             mainActionButton.addEventListener('click', async () => {
                 try {
+                    // 假设 downloadFinetuneTaskOutput 是已定义的API调用函数
                     const response = await downloadFinetuneTaskOutput(task.task_id);
                     const contentDisposition = response.headers.get('content-disposition');
                     let filename = `finetune_output_${task.task_id}.zip`;
@@ -656,18 +753,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * @function fetchAndRepopulateFinetuneTaskDetails
-     * @description 获取并重新填充微调任务详情 (用于弹窗内轮询)。
+     * 获取并重新填充微调任务详情 (用于弹窗内轮询)。
      * @param {string} taskId - 任务ID。
      */
     async function fetchAndRepopulateFinetuneTaskDetails(taskId) {
         const taskDetailsModal = document.getElementById('task-details-modal');
+        // 检查弹窗是否打开且显示的是当前任务
         if (!taskDetailsModal || taskDetailsModal.classList.contains('hidden') || currentDetailTaskId_Finetune !== taskId) {
-            return; // 弹窗未打开或已切换到其他任务
+            return;
         }
         try {
+            // 假设 getFinetuneTaskDetails 是已定义的API调用函数
             const updatedTask = await getFinetuneTaskDetails(taskId);
 
+            // 再次检查，确保在异步调用期间用户没有关闭或切换弹窗
             if (updatedTask && currentDetailTaskId_Finetune === taskId && !taskDetailsModal.classList.contains('hidden')) {
                 const taskDetailsBody = document.getElementById('task-details-body');
                 const taskDetailsFooter = document.getElementById('task-details-footer');
@@ -675,18 +774,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     populateFinetuneTaskDetailsModalContent(updatedTask, taskDetailsBody, taskDetailsFooter);
                 }
             } else if (!updatedTask) {
+                // 任务可能已被删除
                 closeFinetuneTaskDetailsPopup();
                 showNotification(0, `无法获取任务 ${taskId} 的详情，可能已被删除。`);
             }
         } catch (error) {
             showNotification(0, `获取任务 ${taskId} 详情失败: ${error.message}`);
-            closeFinetuneTaskDetailsPopup();
+            closeFinetuneTaskDetailsPopup(); // 获取失败时关闭弹窗
         }
     }
 
     /**
-     * @function showFinetuneTaskDetailsPopup
-     * @description 显示微调任务详情弹窗，并启动该任务详情的轮询。
+     * 显示微调任务详情弹窗，并启动该任务详情的轮询。
      * @param {object} task - 任务对象。
      */
     function showFinetuneTaskDetailsPopup(task) {
@@ -702,7 +801,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         currentDetailTaskId_Finetune = task.task_id;
-        populateFinetuneTaskDetailsModalContent(task, taskDetailsBody, taskDetailsFooter); // 初始填充
+        // 初始填充弹窗内容
+        populateFinetuneTaskDetailsModalContent(task, taskDetailsBody, taskDetailsFooter);
 
         taskDetailsOverlay.classList.remove('hidden');
         taskDetailsModal.classList.remove('hidden');
@@ -712,27 +812,29 @@ document.addEventListener('DOMContentLoaded', () => {
         modalCloseButton.parentNode.replaceChild(newCloseButton, modalCloseButton);
         newCloseButton.addEventListener('click', closeFinetuneTaskDetailsPopup);
 
+        // 点击遮罩层关闭弹窗
         taskDetailsOverlay.onclick = function(event) {
-            if (event.target === taskDetailsOverlay) { // 点击遮罩层关闭
+            if (event.target === taskDetailsOverlay) {
                 closeFinetuneTaskDetailsPopup();
             }
         };
 
+        // 清除上一个任务的详情轮询（如果存在）
         if (taskDetailPollingIntervalId_Finetune) {
-            clearInterval(taskDetailPollingIntervalId_Finetune); // 清除上一个任务的详情轮询
+            clearInterval(taskDetailPollingIntervalId_Finetune);
         }
 
-        fetchAndRepopulateFinetuneTaskDetails(task.task_id); // 立即获取一次
-        if (['pending', 'queued', 'running'].includes(task.status))  {
+        // 立即获取一次最新详情并启动轮询（仅对进行中、排队中或提交中的任务）
+        fetchAndRepopulateFinetuneTaskDetails(task.task_id);
+        if (['pending', 'queued', 'running'].includes(task.status)) {
             taskDetailPollingIntervalId_Finetune = setInterval(() => {
-            fetchAndRepopulateFinetuneTaskDetails(task.task_id);
+                fetchAndRepopulateFinetuneTaskDetails(task.task_id);
             }, TASK_DETAIL_POLLING_INTERVAL_MS);
         }
     }
 
     /**
-     * @function closeFinetuneTaskDetailsPopup
-     * @description 关闭微调任务详情弹窗，并停止其轮询。
+     * 关闭微调任务详情弹窗，并停止其轮询。
      */
     function closeFinetuneTaskDetailsPopup() {
         const taskDetailsOverlay = document.getElementById('task-details-overlay');
@@ -740,11 +842,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (taskDetailsOverlay && taskDetailsModal) {
             taskDetailsOverlay.classList.add('hidden');
             taskDetailsModal.classList.add('hidden');
+            // 移除遮罩层点击事件，防止内存泄漏
             if (taskDetailsOverlay.onclick) {
-                taskDetailsOverlay.onclick = null; // 移除遮罩层点击事件
+                taskDetailsOverlay.onclick = null;
             }
         }
 
+        // 停止任务详情轮询
         if (taskDetailPollingIntervalId_Finetune) {
             clearInterval(taskDetailPollingIntervalId_Finetune);
             taskDetailPollingIntervalId_Finetune = null;
@@ -753,22 +857,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * @function fetchFinetuneTasksAndUpdateList
-     * @description 获取微调任务列表并更新UI。
+     * 获取微调任务列表并更新UI。
      */
     async function fetchFinetuneTasksAndUpdateList() {
         console.log("正在获取微调任务列表以更新UI...");
         try {
-            const tasks = await getFinetuneTasks(); // 假设API函数
+            // 假设 getFinetuneTasks 是已定义的API函数
+            const tasks = await getFinetuneTasks();
             populateFinetuneTaskList(tasks);
         } catch (error) {
-            populateFinetuneTaskList(null); // 传递 null 以显示错误或无任务消息
+            console.error("获取微调任务列表失败:", error);
+            // 传递 null 以显示错误或无任务消息
+            populateFinetuneTaskList(null);
         }
     }
 
     /**
-     * @function startFinetunePolling
-     * @description 启动微调任务列表的轮询。
+     * 启动微调任务列表的轮询。
      */
     function startFinetunePolling() {
         if (finetunePollingIntervalId === null) {
@@ -779,13 +884,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * @function stopFinetunePolling
-     * @description 停止微调任务列表的轮询。
+     * 停止微调任务列表的轮询。
      */
     function stopFinetunePolling() {
         if (finetunePollingIntervalId !== null) {
             clearInterval(finetunePollingIntervalId);
             finetunePollingIntervalId = null;
+            console.log("停止微调任务列表轮询。");
         }
     }
 
@@ -794,21 +899,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (finetuneTasksContentDiv) {
         const observer = new MutationObserver((mutationsList) => {
             for (const mutation of mutationsList) {
+                // 检查 class 属性的变化
                 if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                     const targetElement = mutation.target;
                     if (!targetElement.classList.contains('hidden')) {
+                        // 区域变为可见时启动轮询
                         startFinetunePolling();
                     } else {
+                        // 区域变为隐藏时停止轮询并关闭详情弹窗
                         stopFinetunePolling();
-                        closeFinetuneTaskDetailsPopup(); // 列表隐藏时也关闭详情弹窗
+                        closeFinetuneTaskDetailsPopup();
                     }
-                    break;
+                    break; // 只关心 class 变化，处理一个即可
                 }
             }
         });
+        // 观察目标元素的 class 属性变化
         observer.observe(finetuneTasksContentDiv, { attributes: true });
 
-        // 初始检查
+        // 页面加载时的初始检查
         if (!finetuneTasksContentDiv.classList.contains('hidden')) {
             startFinetunePolling();
         }
@@ -821,20 +930,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (finetuneTaskListContainer) {
         finetuneTaskListContainer.addEventListener('click', async function(event) {
             const target = event.target;
+            // 检查点击的是否是删除按钮
             if (target.classList.contains('delete-task-button')) {
                 const listItem = target.closest('.task-list-item');
                 if (listItem && listItem.dataset.taskId) {
                     const taskId = listItem.dataset.taskId;
                     const taskName = listItem.querySelector('.finetune-col-name')?.textContent || taskId;
+                    // 假设 showConfirmation 是已定义的确认弹窗函数
                     const userConfirmed = await showConfirmation(
-                    `确定要删除微调任务 "${taskName}" (ID: ${taskId})吗？此操作不可恢复！`
-                );
+                        `确定要删除微调任务 "${taskName}" (ID: ${taskId})吗？此操作不可恢复！`
+                    );
                     if (userConfirmed) {
                         try {
-                            const result = await deleteFinetuneTask(taskId); // 假设API函数
+                            // 假设 deleteFinetuneTask 是已定义的API函数
+                            const result = await deleteFinetuneTask(taskId);
                             showNotification(2, result.message || `任务 ${taskId} 已成功删除。`);
                             fetchFinetuneTasksAndUpdateList(); // 刷新列表
-                            if (currentDetailTaskId_Finetune === taskId) { // 如果删除的是当前详情弹窗的任务
+                            // 如果删除的是当前详情弹窗正在显示的任务，则关闭弹窗
+                            if (currentDetailTaskId_Finetune === taskId) {
                                 closeFinetuneTaskDetailsPopup();
                             }
                         } catch (error) {

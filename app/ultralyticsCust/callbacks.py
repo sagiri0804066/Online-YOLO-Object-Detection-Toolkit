@@ -2,10 +2,11 @@
 import os
 import json
 import logging
-import time  # 新增 time 模块
+import time
 from app.models import FinetuneTask
 from app.database import db
-from sqlalchemy.orm import Session  # 显式导入 Session 类型提示
+from sqlalchemy.orm import Session
+from math import ceil  # 导入ceil用于向上取整
 
 
 class FinetuneProgressCallback:
@@ -20,23 +21,31 @@ class FinetuneProgressCallback:
                  user_id: int,
                  db_session_maker: callable,
                  user_task_base_dir: str,
-                 logger: logging.Logger,  # 应使用 current_app.logger
+                 logger: logging.Logger,
                  total_epochs_from_task: int = 0,
                  celery_task_update_state_func: callable = None,
-                 db_update_interval_seconds: int = 5):  # 新增参数：数据库更新时间间隔
+                 db_update_interval_seconds: int = 5):
         self.task_id = task_id
         self.user_id = user_id
         self.db_session_maker = db_session_maker
         self.user_task_base_dir = user_task_base_dir
-        self.logger = logger  # 使用传入的 logger (应该是 current_app.logger)
+        self.logger = logger
         self.cancel_signal_file = os.path.join(self.user_task_base_dir, ".cancel_signal")
         self.initial_total_epochs = total_epochs_from_task
-        self._trainer = None  # YOLO Trainer 实例
+        self._trainer = None
         self.celery_task_update_state_func = celery_task_update_state_func
 
         self.db_update_interval = db_update_interval_seconds
-        self.last_db_update_time_batch = 0  # 上次批次相关信息更新到DB的时间戳
-        self.last_metrics_for_db = {}  # 缓存上次写入DB的metrics_json内容，避免频繁读DB
+        self.last_db_update_time_batch = 0
+        self.last_metrics_for_db = {}
+
+        self.batch_start_time_manual = 0
+        self.ema_batch_time_manual = None
+        self.ema_alpha_manual = 0.1
+
+        # 计数器
+        self.manual_batch_counter_for_epoch = 0  # 1-indexed counter for batches within an epoch
+        self.last_epoch_for_manual_counter = -1  # Tracks the epoch for resetting the counter
 
         self.logger.info(
             f"[Callback:{self.task_id}] Initialized. DB update interval: {self.db_update_interval}s. Cancel signal file: {self.cancel_signal_file}")
@@ -51,16 +60,10 @@ class FinetuneProgressCallback:
         return task_record
 
     def _execute_db_update(self, updates: dict, force_update: bool = False):
-        """
-        执行数据库更新。
-        :param updates: 要更新的字段字典。
-        :param force_update: 是否强制更新，忽略时间间隔（例如轮次结束时）。
-        """
         current_time = time.time()
-
         if not force_update and (current_time - self.last_db_update_time_batch < self.db_update_interval):
-            # self.logger.debug(f"[Callback:{self.task_id}] Skipping DB update due to interval.")
-            return  # 未到时间间隔，不更新数据库
+            # self.logger.debug(f"[Callback:{self.task_id}] Skipping DB update due to interval.") # Can be noisy
+            return
 
         session: Session = None
         try:
@@ -69,13 +72,25 @@ class FinetuneProgressCallback:
             session.commit()
             self.logger.info(
                 f"[Callback:{self.task_id}] DB successfully updated with keys: {list(updates.keys())}. Forced: {force_update}")
-            if not force_update:  # 只为受时间间隔控制的更新（即批次更新）重置时间戳
-                self.last_db_update_time_batch = current_time
-                # 更新缓存的 metrics_json，如果它在 updates 中
-                if "metrics_json" in updates:
-                    self.last_metrics_for_db = json.loads(updates["metrics_json"]) if isinstance(
-                        updates["metrics_json"], str) else updates["metrics_json"]
 
+            if not force_update:
+                self.last_db_update_time_batch = current_time
+
+            if "metrics_json" in updates:
+                try:
+                    if isinstance(updates["metrics_json"], str):
+                        self.last_metrics_for_db = json.loads(updates["metrics_json"])
+                    elif isinstance(updates["metrics_json"], dict):
+                        self.last_metrics_for_db = updates["metrics_json"]
+                    else:
+                        self.logger.warning(
+                            f"[Callback:{self.task_id}] metrics_json in updates was neither string nor dict. Type: {type(updates['metrics_json'])}")
+                except json.JSONDecodeError as e:
+                    self.logger.error(
+                        f"[Callback:{self.task_id}] Failed to decode metrics_json for caching: {e}. Metrics string: {updates['metrics_json']}")
+                except TypeError as e:
+                    self.logger.error(
+                        f"[Callback:{self.task_id}] metrics_json for caching was not a string or dict: {e}. Value: {updates['metrics_json']}")
         except Exception as e:
             self.logger.error(f"[Callback:{self.task_id}] Error updating task in DB: {e}", exc_info=True)
             if session:
@@ -85,22 +100,21 @@ class FinetuneProgressCallback:
                 session.close()
 
     def _check_cancel_signal(self) -> bool:
+        trainer_to_stop = self._trainer  # Use the stored trainer instance
         if os.path.exists(self.cancel_signal_file):
             self.logger.info(f"[Callback:{self.task_id}] Cancel signal detected. Attempting to stop training.")
-            if self._trainer:
-                self._trainer.stop_training = True  # Ultralytics YOLOv8 停止训练的标志
-                self.logger.info(f"[Callback:{self.task_id}] Requested trainer to stop training.")
+            if trainer_to_stop:
+                trainer_to_stop.stop_training = True
+                self.logger.info(f"[Callback:{self.task_id}] Requested trainer (self._trainer) to stop training.")
             else:
                 self.logger.warning(
-                    f"[Callback:{self.task_id}] Cancel signal detected, but trainer instance is not yet available in callback.")
-
+                    f"[Callback:{self.task_id}] Cancel signal detected, but self._trainer instance is not yet available in callback.")
             updates = {
                 "status": 'cancelled',
                 "error_message": "任务被用户通过回调中的信号文件检测取消。",
                 "completed_at": db.func.now()
             }
-            self._execute_db_update(updates, force_update=True)  # 状态变更，强制更新
-
+            self._execute_db_update(updates, force_update=True)
             try:
                 os.remove(self.cancel_signal_file)
                 self.logger.info(f"[Callback:{self.task_id}] Cancel signal file removed.")
@@ -110,21 +124,32 @@ class FinetuneProgressCallback:
         return False
 
     def on_pretrain_routine_start(self, trainer):
-        self.logger.info(f"[Callback:{self.task_id}] on_pretrain_routine_start: Storing trainer instance.")
-        self._trainer = trainer
-        # 初始化/重置状态
+        self.logger.info(
+            f"[Callback:{self.task_id}] on_pretrain_routine_start: Storing trainer instance as self._trainer.")
+        self._trainer = trainer  # Store the trainer instance
         self.last_db_update_time_batch = 0
-        # 从数据库加载一次 metrics_json 作为初始缓存，如果存在的话
+        self.last_metrics_for_db = {}
+        self.manual_batch_counter_for_epoch = 0
+        self.last_epoch_for_manual_counter = -1
+
         session: Session = None
         try:
             session = self.db_session_maker()
             task_record = session.query(FinetuneTask).filter_by(id=self.task_id, user_id=self.user_id).first()
             if task_record and task_record.metrics_json:
-                self.last_metrics_for_db = json.loads(task_record.metrics_json)
+                try:
+                    self.last_metrics_for_db = json.loads(task_record.metrics_json)
+                    self.logger.info(
+                        f"[Callback:{self.task_id}] Loaded initial metrics from DB: {self.last_metrics_for_db if len(str(self.last_metrics_for_db)) < 200 else str(self.last_metrics_for_db)[:200] + '...'}")
+                except json.JSONDecodeError:
+                    self.logger.warning(
+                        f"[Callback:{self.task_id}] Failed to decode existing metrics_json from DB, starting fresh.")
+                    self.last_metrics_for_db = {}
             else:
                 self.last_metrics_for_db = {}
         except Exception as e:
-            self.logger.error(f"[Callback:{self.task_id}] Error loading initial metrics_json: {e}")
+            self.logger.error(
+                f"[Callback:{self.task_id}] Error loading initial metrics_json in on_pretrain_routine_start: {e}")
             self.last_metrics_for_db = {}
         finally:
             if session: session.close()
@@ -134,7 +159,6 @@ class FinetuneProgressCallback:
         if self._check_cancel_signal():
             self.logger.info(f"[Callback:{self.task_id}] Training stopped by cancel signal before first epoch.")
             return
-
         session: Session = None
         try:
             session = self.db_session_maker()
@@ -142,91 +166,109 @@ class FinetuneProgressCallback:
             if task_record:
                 actual_total_epochs = getattr(trainer, 'epochs', 0)
                 updates_for_db = {}
-
-                if actual_total_epochs > 0:  # trainer.epochs 通常是准确的总轮次数
+                if actual_total_epochs > 0:
                     if task_record.total_epochs != actual_total_epochs:
                         updates_for_db["total_epochs"] = actual_total_epochs
                 elif self.initial_total_epochs > 0 and (
                         task_record.total_epochs is None or task_record.total_epochs == 0):
-                    # 如果 trainer.epochs 未提供，但我们从任务参数中得到了一个初始值
                     updates_for_db["total_epochs"] = self.initial_total_epochs
-
-                # 确保 total_epochs 有值，用于Celery进度条等
                 if not updates_for_db.get("total_epochs") and not task_record.total_epochs:
-                    updates_for_db[
-                        "total_epochs"] = self.initial_total_epochs if self.initial_total_epochs > 0 else 1  # 至少为1，防止除零
-
-                if task_record.status == 'queued' or task_record.status == 'pending':  # 确保状态是 running
+                    updates_for_db["total_epochs"] = 1
+                if task_record.status == 'queued' or task_record.status == 'pending':
                     updates_for_db["status"] = 'running'
                 if not task_record.started_at:
                     updates_for_db["started_at"] = db.func.now()
-
                 if updates_for_db:
-                    # 这里直接操作 session，因为 _execute_db_update 有自己的 session 管理
-                    self._get_and_update_task(updates_for_db, session)
-                    session.commit()
+                    self._execute_db_update(updates_for_db, force_update=True)
                     self.logger.info(
                         f"[Callback:{self.task_id}] Task pre-train info updated in DB: {list(updates_for_db.keys())}")
             else:
                 self.logger.error(f"[Callback:{self.task_id}] Task not found in DB during on_pretrain_routine_end.")
         except Exception as e:
             self.logger.error(f"[Callback:{self.task_id}] Error in on_pretrain_routine_end: {e}", exc_info=True)
-            if session: session.rollback()
         finally:
             if session: session.close()
 
-    def on_fit_epoch_end(self, trainer):
-        current_epoch_display = int(trainer.epoch) + 1 if hasattr(trainer, 'epoch') else 'N/A'
-        self.logger.debug(f"[Callback:{self.task_id}] on_fit_epoch_end called for epoch {current_epoch_display}.")
+    def on_train_batch_start(self, trainer):
+        # self.logger.critical(f"!!!!!!!!!! [Callback:{self.task_id}] on_train_batch_start CALLED !!!!!!!!!!") # Keep for debugging if needed
+        # self.logger.critical(f"[Callback:{self.task_id}] Trainer type (on_train_batch_start): {type(trainer)}")
 
-        if self._check_cancel_signal():  # 检查取消
+        # Update manual batch counter
+        current_trainer_epoch = -1
+        if hasattr(trainer, 'epoch'):
+            current_trainer_epoch = int(trainer.epoch)  # 0-indexed
+
+        if current_trainer_epoch != self.last_epoch_for_manual_counter:
+            self.manual_batch_counter_for_epoch = 0  # Reset for new epoch
+            self.last_epoch_for_manual_counter = current_trainer_epoch
+            self.logger.info(
+                f"[Callback:{self.task_id}] New epoch {current_trainer_epoch + 1} started, batch counter reset.")
+
+        self.manual_batch_counter_for_epoch += 1  # Increment for current batch (becomes 1-indexed)
+        # self.logger.critical(f"[Callback:{self.task_id}] Manual batch counter for epoch {current_trainer_epoch + 1}: {self.manual_batch_counter_for_epoch}")
+
+        self.batch_start_time_manual = time.time()
+
+    def on_fit_epoch_end(self, trainer):
+        current_epoch_0_indexed = int(trainer.epoch) if hasattr(trainer, 'epoch') else -1
+        current_epoch_display = current_epoch_0_indexed + 1
+        self.logger.info(f"[Callback:{self.task_id}] on_fit_epoch_end called for epoch {current_epoch_display}.")
+        self.logger.info(
+            f"[Callback:{self.task_id}] trainer.metrics at epoch end: {trainer.metrics if hasattr(trainer, 'metrics') else 'N/A'}")
+
+        if self._check_cancel_signal():
             self.logger.info(
                 f"[Callback:{self.task_id}] Epoch {current_epoch_display}: Training stopped by cancel signal.")
             return
 
-        current_epoch_db_val = int(trainer.epoch) + 1
         total_epochs_val = int(trainer.epochs) if hasattr(trainer, 'epochs') else self.initial_total_epochs
 
-        # 从 trainer.metrics 获取轮次结束时的指标
-        epoch_metrics = {}
+        metrics_for_db = {}
         if hasattr(trainer, 'metrics') and trainer.metrics:
-            epoch_metrics = {k: (round(float(v), 5) if isinstance(v, (float, int)) else str(v))
-                             for k, v in trainer.metrics.items()}
+            metrics_for_db = {k: (round(float(v), 5) if isinstance(v, (float, int)) else str(v))
+                              for k, v in trainer.metrics.items()}
 
-        # 将这些轮次指标合并到我们维护的 metrics_json 中
-        # self.last_metrics_for_db 此刻可能包含上一个批次的临时信息
-        # 我们用 trainer.metrics (更权威的轮次结束指标) 来更新它
-        # 同时保留一些可能由批次回调设置的非 trainer.metrics 的信息（如速度）
-
-        # 创建一个新的字典，基于 self.last_metrics_for_db，但优先使用 trainer.metrics 的值
-        merged_metrics = self.last_metrics_for_db.copy()  # 从缓存的指标开始
-        merged_metrics.update(epoch_metrics)  # 用轮次结束的指标覆盖/添加
-
-        # 确保 current_batch 和 total_batches_in_epoch 在轮次结束时是正确的
+        total_batches_in_this_epoch = 0
         if hasattr(trainer, 'train_loader') and trainer.train_loader:
             total_batches_in_this_epoch = len(trainer.train_loader)
-            merged_metrics['current_batch'] = total_batches_in_this_epoch  # 轮次结束，当前批次等于总批次
-            merged_metrics['total_batches_in_epoch'] = total_batches_in_this_epoch
+        elif hasattr(trainer, 'batches_per_epoch'):
+            total_batches_in_this_epoch = trainer.batches_per_epoch
 
-        # 如果 iterations_per_second_batch 存在于 merged_metrics，可以保留它作为该轮次最后一个批次的速度参考
-        # 或者计算一个轮次平均速度，如果 trainer 提供这种信息的话
+        if total_batches_in_this_epoch > 0:
+            metrics_for_db['current_batch'] = total_batches_in_this_epoch
+            metrics_for_db['total_batches_in_epoch'] = total_batches_in_this_epoch
+        else:
+            metrics_for_db.pop('current_batch', None)
+            metrics_for_db.pop('total_batches_in_epoch', None)
+
+        if isinstance(self.last_metrics_for_db, dict):
+            for key_to_preserve in ["best_epoch", "best_fitness_val", "iterations_per_second_batch", "batch_loss"]:
+                if key_to_preserve in self.last_metrics_for_db and key_to_preserve not in metrics_for_db:
+                    metrics_for_db[key_to_preserve] = self.last_metrics_for_db[key_to_preserve]
+
+        common_train_loss_keys = ['train/box_loss', 'train/cls_loss', 'train/dfl_loss']
+        missing_train_losses = [k for k in common_train_loss_keys if k not in metrics_for_db]
+        if missing_train_losses:
+            self.logger.warning(
+                f"[Callback:{self.task_id}] Epoch {current_epoch_display}: trainer.metrics is missing common train loss keys: {missing_train_losses}. Content keys: {list(metrics_for_db.keys())}")
 
         updates = {
-            "current_epoch": current_epoch_db_val,
-            "metrics_json": json.dumps(merged_metrics)
+            "current_epoch": current_epoch_display,
+            "metrics_json": json.dumps(metrics_for_db)
         }
-        self._execute_db_update(updates, force_update=True)  # 轮次结束，强制更新数据库
+        self._execute_db_update(updates, force_update=True)
         self.logger.info(
-            f"[Callback:{self.task_id}] Epoch {current_epoch_display} progress saved to DB (forced). Metrics: {merged_metrics}")
+            f"[Callback:{self.task_id}] Epoch {current_epoch_display} progress saved to DB (forced). Metrics: {metrics_for_db if len(str(metrics_for_db)) < 200 else str(metrics_for_db)[:200] + '...'}")
 
-        # 更新Celery任务状态 (用于前端显示轮次进度)
         if self.celery_task_update_state_func:
+            progress_percent = (current_epoch_display / total_epochs_val * 100) if total_epochs_val > 0 else 0
             celery_meta = {
                 'type': 'epoch_progress',
-                'current_epoch': current_epoch_db_val,
+                'current_epoch': current_epoch_display,
                 'total_epochs': total_epochs_val,
+                'progress_percent': round(progress_percent, 2),
                 'status_message': f"Epoch {current_epoch_display}/{total_epochs_val} completed.",
-                'metrics': merged_metrics  # 发送合并后的指标
+                'metrics': metrics_for_db
             }
             try:
                 self.celery_task_update_state_func(state='PROGRESS', meta=celery_meta)
@@ -235,86 +277,187 @@ class FinetuneProgressCallback:
                                   exc_info=False)
 
     def on_train_batch_end(self, trainer):
-        if not self._trainer: return  # trainer 未初始化
-        if self._check_cancel_signal(): return  # 检查取消
+        # self.logger.critical(f"!!!!!!!!!! [Callback:{self.task_id}] on_train_batch_end CALLED !!!!!!!!!!") # Keep for debugging if needed
 
-        current_time = time.time()
-        # 检查是否到达更新数据库的时间间隔
-        if current_time - self.last_db_update_time_batch < self.db_update_interval and self.last_db_update_time_batch != 0:
-            # 虽然不更新DB，但仍然可以发送Celery进度，如果需要非常实时的前端更新
-            # 但为了与DB更新频率匹配，这里也先跳过Celery更新，或使其更频繁
-            # 为简单起见，如果DB不更新，Celery的批次进度也不发（轮次进度会发）
+        if self._check_cancel_signal():
+            self.logger.info(f"[Callback:{self.task_id}] on_train_batch_end: Cancel signal detected, stopping.")
             return
 
+        if not trainer:  # Should use self._trainer if trainer param is None, but callbacks usually provide it.
+            self.logger.error(
+                f"[Callback:{self.task_id}] Critical: trainer parameter in on_train_batch_end is None. Using self._trainer if available.")
+            trainer = self._trainer  # Fallback to stored trainer
+            if not trainer:
+                self.logger.error(
+                    f"[Callback:{self.task_id}] Critical: self._trainer is also None. Skipping batch update.")
+                return
+
+        current_time = time.time()
+        # Check if it's time to update DB based on interval (only if not forced)
+        if self.last_db_update_time_batch != 0 and (
+                current_time - self.last_db_update_time_batch < self.db_update_interval):
+            return  # Not time yet
+
         try:
-            current_epoch_display = int(trainer.epoch) + 1
-            current_batch_idx_display = trainer.batch_idx + 1  # trainer.batch_idx 是0-indexed
+            current_epoch_0_indexed = -1
+            if hasattr(trainer, 'epoch'):
+                current_epoch_0_indexed = int(trainer.epoch)
+            else:
+                self.logger.warning(
+                    f"[Callback:{self.task_id}] trainer.epoch not found in on_train_batch_end. Using last known: {self.last_epoch_for_manual_counter}")
+                current_epoch_0_indexed = self.last_epoch_for_manual_counter  # Use the one updated by on_train_batch_start
+
+            current_epoch_display = current_epoch_0_indexed + 1 if current_epoch_0_indexed != -1 else 1  # 1-indexed for display
 
             total_batches_in_epoch = 0
-            if trainer.train_loader:
+            if hasattr(trainer, 'train_loader') and trainer.train_loader:
                 total_batches_in_epoch = len(trainer.train_loader)
-            elif hasattr(trainer, 'batches_per_epoch'):  # 有些版本可能是这个属性
+            elif hasattr(trainer, 'batches_per_epoch'):  # Fallback, might not be set early
                 total_batches_in_epoch = trainer.batches_per_epoch
 
-            # 估算速度 (it/s)
-            # trainer.speed 是一个字典，例如: {'preprocess': 2.0, 'inference': 10.0, 'loss': 1.0, 'postprocess': 1.5} (单位: ms)
-            # trainer.dt 是一个列表，包含各阶段耗时，例如 [preprocess_dt, inference_dt, loss_dt, postprocess_dt]
+            if total_batches_in_epoch == 0 and hasattr(trainer, 'args') and hasattr(trainer.args,
+                                                                                    'nbs'):  # nbs: nominal batch size (total batches in an epoch)
+                total_batches_in_epoch = getattr(trainer.args, 'nbs', 0)
+                if total_batches_in_epoch > 0:
+                    self.logger.info(
+                        f"[Callback:{self.task_id}] Used trainer.args.nbs for total_batches_in_epoch: {total_batches_in_epoch}")
+
+            if total_batches_in_epoch == 0:  # If still zero, log warning
+                self.logger.warning(
+                    f"[Callback:{self.task_id}] total_batches_in_epoch is 0 in on_train_batch_end. Progress calculation might be inaccurate.")
+
+            # --- 获取当前批次索引 ---
+            # Use the 1-indexed manual counter directly for display
+            current_batch_idx_display = self.manual_batch_counter_for_epoch
+            # For calculations, we might need 0-indexed
+            current_batch_idx_0_indexed = self.manual_batch_counter_for_epoch - 1
+
+            # self.logger.info(f"[Callback:{self.task_id}] Using manual batch counter. Display: {current_batch_idx_display}, 0-indexed: {current_batch_idx_0_indexed}")
+
+            # Cap display value if total_batches_in_epoch is known
+            if total_batches_in_epoch > 0:
+                current_batch_idx_display = max(1, min(current_batch_idx_display, total_batches_in_epoch))
+            # --- 结束获取批次索引 ---
+
             iterations_per_second = None
-            batch_time_sum_ms = 0
+            # Try trainer.speed (usually in ms per component)
             if hasattr(trainer, 'speed') and isinstance(trainer.speed, dict) and trainer.speed:
-                batch_time_sum_ms = sum(s for s in trainer.speed.values() if isinstance(s, (int, float)))
-            elif hasattr(trainer, 'dt') and isinstance(trainer.dt, list) and len(trainer.dt) >= 3:  # 假设前3个是主要耗时
-                batch_time_sum_ms = sum(trainer.dt[:3])
+                relevant_speed_keys = ['preprocess', 'inference', 'loss', 'postprocess', 'forward', 'backward']
+                batch_time_sum_ms = sum(trainer.speed.get(k, 0.0) for k in relevant_speed_keys if
+                                        isinstance(trainer.speed.get(k), (int, float)))
+                if batch_time_sum_ms > 0:
+                    iterations_per_second = round(1000.0 / batch_time_sum_ms, 2)
 
-            if batch_time_sum_ms > 0:
-                iterations_per_second = round(1000.0 / batch_time_sum_ms, 2)  # 转换为 it/s
+            # Try trainer.stats (may contain 'time/batch' in seconds)
+            if iterations_per_second is None and hasattr(trainer, 'stats') and isinstance(trainer.stats, dict):
+                if 'time/batch' in trainer.stats:
+                    batch_time_s = trainer.stats['time/batch']
+                    if isinstance(batch_time_s, (int, float)) and batch_time_s > 0:
+                        iterations_per_second = round(1.0 / batch_time_s, 2)
 
-            # 获取当前批次的损失等信息
+            # Try trainer.dt (list/tuple of [preprocess, inference, postprocess] times in seconds)
+            if iterations_per_second is None and hasattr(trainer, 'dt') and isinstance(trainer.dt, (list, tuple)):
+                if len(trainer.dt) > 0:
+                    total_dt_seconds = sum(t for t in trainer.dt if isinstance(t, (int, float)))
+                    if total_dt_seconds > 0:
+                        iterations_per_second = round(1.0 / total_dt_seconds, 2)
+
+            # Fallback to manual EMA calculation
+            if iterations_per_second is None and self.batch_start_time_manual > 0:
+                current_batch_duration_manual = time.time() - self.batch_start_time_manual
+                if current_batch_duration_manual > 1e-3:
+                    if self.ema_batch_time_manual is None:
+                        self.ema_batch_time_manual = current_batch_duration_manual
+                    else:
+                        self.ema_batch_time_manual = self.ema_alpha_manual * current_batch_duration_manual + \
+                                                     (1 - self.ema_alpha_manual) * self.ema_batch_time_manual
+                    if self.ema_batch_time_manual > 1e-3:
+                        iterations_per_second = round(1.0 / self.ema_batch_time_manual, 2)
+                        # self.logger.info(f"[Callback:{self.task_id}] Speed calculated manually (EMA): {iterations_per_second} it/s")
+
+            if iterations_per_second is None:
+                self.logger.warning(
+                    f"[Callback:{self.task_id}] Could not determine iterations_per_second for batch {current_batch_idx_display}.")
+
             batch_specific_metrics = {}
-            if hasattr(trainer, 'loss') and trainer.loss is not None:  # YOLOv8 的批次损失
-                batch_specific_metrics['batch_loss'] = round(float(trainer.loss.item()), 5)
-
-            # Ultralytics trainer.label_loss_items(trainer.tloss, prefix="train") 可以提供更详细的损失分类
-            if hasattr(trainer, 'label_loss_items') and hasattr(trainer, 'tloss'):  # trainer.tloss 是 tensor 形式的损失
-                # 这个方法可能需要 trainer.tloss 已经是 detached 和 on cpu 的
+            if hasattr(trainer, 'loss') and trainer.loss is not None:  # This is total loss for the batch
                 try:
-                    loss_items_dict = trainer.label_loss_items(trainer.tloss.detach().cpu(), prefix="train")
-                    if loss_items_dict:
-                        batch_specific_metrics.update({k: round(v, 5) for k, v in loss_items_dict.items()})
-                except Exception as e_loss_items:
-                    self.logger.debug(f"[Callback:{self.task_id}] Could not get detailed loss_items: {e_loss_items}")
+                    batch_specific_metrics['batch_loss'] = round(float(trainer.loss.item()), 5)
+                except Exception as e_loss:
+                    self.logger.warning(f"[Callback:{self.task_id}] Could not get trainer.loss.item(): {e_loss}")
 
-            # 更新 metrics_json: 基于上次写入DB的 metrics (self.last_metrics_for_db)
-            # 然后添加/更新当前批次的信息
-            metrics_for_db_update = self.last_metrics_for_db.copy()  # 从缓存开始
+            # Detailed losses (e.g., box_loss, cls_loss, dfl_loss)
+            if hasattr(trainer, 'label_loss_items') and hasattr(trainer, 'tloss') and trainer.tloss is not None:
+                try:
+                    loss_items_dict = trainer.label_loss_items(trainer.tloss.detach().cpu(),
+                                                               prefix="train")  # Adds "train/" prefix
+                    if loss_items_dict:
+                        batch_specific_metrics.update(
+                            {k: round(float(v), 5) for k, v in loss_items_dict.items() if isinstance(v, (int, float))})
+                except Exception as e_loss_items:
+                    self.logger.debug(
+                        f"[Callback:{self.task_id}] Could not get detailed loss_items via label_loss_items: {e_loss_items}")
+            elif hasattr(trainer,
+                         'loss_items') and trainer.loss_items is not None:  # Fallback for some trainer versions
+                try:
+                    # loss_names are usually ('box_loss', 'cls_loss', 'dfl_loss')
+                    loss_names = getattr(trainer, 'loss_names',
+                                         ['box_loss', 'cls_loss', 'dfl_loss'])  # Default if not found
+                    if hasattr(trainer.loss_items, 'detach'):  # Ensure it's a tensor
+                        detached_loss_items = trainer.loss_items.detach().cpu().tolist()
+                        if len(detached_loss_items) == len(loss_names):
+                            for i, name in enumerate(loss_names):
+                                # Add "train/" prefix if not already there
+                                key_name = f"train/{name}" if not name.startswith("train/") else name
+                                batch_specific_metrics[key_name] = round(float(detached_loss_items[i]), 5)
+                except Exception as e_loss_items_alt:
+                    self.logger.debug(
+                        f"[Callback:{self.task_id}] Could not get detailed loss_items from trainer.loss_items: {e_loss_items_alt}")
+
+            metrics_for_db_update = {}
+            if isinstance(self.last_metrics_for_db, dict):  # Start with last known good epoch metrics
+                metrics_for_db_update = self.last_metrics_for_db.copy()
+
             metrics_for_db_update['current_batch'] = current_batch_idx_display
-            metrics_for_db_update['total_batches_in_epoch'] = total_batches_in_epoch
+            metrics_for_db_update[
+                'total_batches_in_epoch'] = total_batches_in_epoch if total_batches_in_epoch > 0 else current_batch_idx_display  # Best guess if total_batches is 0
+
             if iterations_per_second is not None:
                 metrics_for_db_update['iterations_per_second_batch'] = iterations_per_second
-            metrics_for_db_update.update(batch_specific_metrics)  # 添加/更新批次特定的损失等
+            else:  # If speed couldn't be determined, remove it if it was there from a previous successful read
+                metrics_for_db_update.pop('iterations_per_second_batch', None)
 
-            # 更新数据库 (此方法内部会检查时间间隔并更新 self.last_db_update_time_batch)
+            metrics_for_db_update.update(batch_specific_metrics)  # Add/overwrite with current batch specifics
+
             db_updates = {
-                "current_epoch": current_epoch_display,  # 确保当前轮次也更新
+                "current_epoch": current_epoch_display,
                 "metrics_json": json.dumps(metrics_for_db_update)
             }
-            self._execute_db_update(db_updates, force_update=False)  # 非强制
+            self._execute_db_update(db_updates, force_update=False)  # This will update self.last_db_update_time_batch
 
-            # 发送 Celery 任务进度 (这个可以每次都发，如果需要更频繁的前端更新)
-            # 但如果上面DB没更新，这里的 metrics_for_db_update 可能不是最新的DB状态
-            # 为了简单和一致性，如果DB没更新，Celery的这个详细批次进度也不发
-            # （上面 return 的时候已经跳过了）
-            if self.celery_task_update_state_func and (
-                    time.time() - self.last_db_update_time_batch < 1.0):  # 检查是否刚更新了DB
+            if self.celery_task_update_state_func:
                 total_epochs_val = int(trainer.epochs) if hasattr(trainer, 'epochs') else self.initial_total_epochs
+                progress_percent = 0
+                if total_epochs_val > 0 and total_batches_in_epoch > 0 and current_epoch_0_indexed != -1:
+                    # current_batch_idx_0_indexed is already 0-indexed
+                    current_global_iteration_0_indexed = (
+                                                                     current_epoch_0_indexed * total_batches_in_epoch) + current_batch_idx_0_indexed
+                    total_iterations = total_epochs_val * total_batches_in_epoch
+                    if total_iterations > 0:
+                        progress_percent = ((
+                                                        current_global_iteration_0_indexed + 1) / total_iterations) * 100  # +1 because we're reporting end of this batch
+                        progress_percent = min(progress_percent, 100.0)
+
                 celery_meta = {
                     'type': 'batch_progress',
                     'epoch': current_epoch_display,
                     'total_epochs': total_epochs_val,
                     'batch': current_batch_idx_display,
                     'total_batches_in_epoch': total_batches_in_epoch,
+                    'progress_percent': round(progress_percent, 2),
                     'iterations_per_second': iterations_per_second,
-                    'batch_metrics': batch_specific_metrics,  # 只发送当前批次的指标
+                    'batch_metrics': batch_specific_metrics,
+                    # Only send current batch metrics to Celery for this update
                     'status_message': f"Epoch {current_epoch_display}/{total_epochs_val}, Batch {current_batch_idx_display}/{total_batches_in_epoch}"
                 }
                 if iterations_per_second is not None:
@@ -325,81 +468,143 @@ class FinetuneProgressCallback:
                 except Exception as e_celery:
                     self.logger.error(f"[Callback:{self.task_id}] Error sending batch progress to Celery: {e_celery}",
                                       exc_info=False)
-
         except Exception as e:
             self.logger.error(f"[Callback:{self.task_id}] Error in on_train_batch_end: {e}", exc_info=True)
+        finally:
+            # Reset manual batch start time for the next batch, regardless of success/failure here
+            self.batch_start_time_manual = 0
+
+    def on_model_save(self, trainer):
+        try:
+            if hasattr(trainer, 'ckpt') and trainer.ckpt and isinstance(trainer.ckpt, dict):
+                saved_epoch_0_indexed = trainer.ckpt.get('epoch', -1)  # epoch is 0-indexed
+                fitness_of_saved_ckpt = trainer.ckpt.get('best_fitness')
+
+                if fitness_of_saved_ckpt is not None and hasattr(trainer, 'best_fitness') and \
+                        abs(fitness_of_saved_ckpt - trainer.best_fitness) < 1e-6:
+
+                    new_best_epoch_1_indexed = saved_epoch_0_indexed + 1
+
+                    metrics_update_for_best = {}
+                    if isinstance(self.last_metrics_for_db, dict):
+                        metrics_update_for_best = self.last_metrics_for_db.copy()
+
+                    update_needed = False
+                    if metrics_update_for_best.get("best_epoch") != new_best_epoch_1_indexed:
+                        metrics_update_for_best["best_epoch"] = new_best_epoch_1_indexed
+                        update_needed = True
+
+                    current_best_fitness_in_metrics = metrics_update_for_best.get("best_fitness_val")
+                    if current_best_fitness_in_metrics is None or \
+                            abs(fitness_of_saved_ckpt - current_best_fitness_in_metrics) > 1e-6:
+                        metrics_update_for_best["best_fitness_val"] = round(float(fitness_of_saved_ckpt), 5)
+                        update_needed = True
+
+                    if update_needed:
+                        db_updates = {"metrics_json": json.dumps(metrics_update_for_best)}
+                        self._execute_db_update(db_updates, force_update=True)
+                        self.logger.info(
+                            f"[Callback:{self.task_id}] Updated best_epoch to {new_best_epoch_1_indexed} and/or best_fitness_val to {fitness_of_saved_ckpt} in DB via on_model_save.")
+                else:
+                    self.logger.debug(
+                        f"[Callback:{self.task_id}] on_model_save: ckpt fitness {fitness_of_saved_ckpt} does not match trainer.best_fitness {getattr(trainer, 'best_fitness', 'N/A')}. Not updating best_epoch from this save.")
+            else:
+                self.logger.debug(f"[Callback:{self.task_id}] on_model_save: trainer.ckpt not available or not a dict.")
+        except Exception as e:
+            self.logger.error(f"[Callback:{self.task_id}] Error in on_model_save: {e}", exc_info=True)
 
     def on_train_end(self, trainer):
         self.logger.info(f"[Callback:{self.task_id}] on_train_end called.")
+        is_cancelled_by_signal = self._trainer and getattr(self._trainer, 'stop_training', False) and os.path.exists(
+            self.cancel_signal_file)
 
-        # 检查是否因为取消信号而停止
-        # trainer.stop_training 是 Ultralytics YOLOv8 的标志
-        if self._trainer and getattr(self._trainer, 'stop_training', False) and os.path.exists(self.cancel_signal_file):
+        if is_cancelled_by_signal:
             self.logger.info(
                 f"[Callback:{self.task_id}] Training ended due to cancel signal. Final status should be 'cancelled'.")
-            # _check_cancel_signal 或 on_fit_epoch_end 中的检查应该已经处理了状态
-            # 这里确保信号文件被移除
             if os.path.exists(self.cancel_signal_file):
                 try:
                     os.remove(self.cancel_signal_file)
-                except OSError:
-                    pass
+                    self.logger.info(
+                        f"[Callback:{self.task_id}] Cleaned up cancel signal file in on_train_end (cancelled case).")
+                except OSError as e:
+                    self.logger.error(
+                        f"[Callback:{self.task_id}] Error removing cancel signal file in on_train_end (cancelled case): {e}")
             return
 
-            # 如果正常结束，确保最后的状态和指标被记录
         session: Session = None
         try:
             session = self.db_session_maker()
             task_record = session.query(FinetuneTask).filter_by(id=self.task_id, user_id=self.user_id).first()
-            if not task_record: return
+            if not task_record:
+                self.logger.error(f"[Callback:{self.task_id}] Task not found in DB during on_train_end.")
+                return
 
-            # 只在任务仍在运行时更新最终指标
             if task_record.status == 'running':
-                final_epoch_metrics = {}
-                if hasattr(trainer, 'metrics') and trainer.metrics:  # trainer.metrics 是最后一个epoch的指标
-                    final_epoch_metrics = {k: (round(float(v), 5) if isinstance(v, (float, int)) else str(v))
-                                           for k, v in trainer.metrics.items()}
+                final_trainer_metrics = {}
+                if hasattr(trainer, 'metrics') and trainer.metrics:
+                    final_trainer_metrics = {k: (round(float(v), 5) if isinstance(v, (float, int)) else str(v))
+                                             for k, v in trainer.metrics.items()}
 
-                # 合并到 self.last_metrics_for_db
-                merged_final_metrics = self.last_metrics_for_db.copy()
-                merged_final_metrics.update(final_epoch_metrics)
+                merged_final_metrics = {}
+                if isinstance(self.last_metrics_for_db, dict):
+                    merged_final_metrics = self.last_metrics_for_db.copy()
 
-                # 获取最终模型路径 (绝对路径)
-                best_model_path_abs = getattr(trainer, 'best', None)
-                if best_model_path_abs and os.path.exists(str(best_model_path_abs)):
-                    merged_final_metrics["callback_reported_best_model_path_abs"] = str(best_model_path_abs)
+                merged_final_metrics.update(final_trainer_metrics)
 
-                # 新增：尝试获取最佳轮次（如果 trainer 有提供）
-                best_epoch = getattr(trainer, 'best_epoch', None)
-                if best_epoch is not None:
-                    merged_final_metrics["best_epoch"] = int(best_epoch)
+                best_model_abs_path = getattr(trainer, 'best', None)
+                if best_model_abs_path and os.path.exists(str(best_model_abs_path)):
+                    try:
+                        best_model_rel_path = os.path.relpath(str(best_model_abs_path), start=self.user_task_base_dir)
+                        merged_final_metrics["best_model_path"] = best_model_rel_path
+                    except ValueError:
+                        merged_final_metrics["best_model_path_abs"] = str(best_model_abs_path)
+                    self.logger.info(f"[Callback:{self.task_id}] Best model path recorded: {best_model_abs_path}")
 
                 updates = {}
                 if merged_final_metrics:
                     updates["metrics_json"] = json.dumps(merged_final_metrics)
 
-                # 确保 current_epoch 等于 total_epochs
-                if hasattr(trainer, 'epochs') and task_record.current_epoch != trainer.epochs:
-                    updates["current_epoch"] = int(trainer.epochs)
+                final_total_epochs = int(trainer.epochs) if hasattr(trainer, 'epochs') else self.initial_total_epochs
+                updates["current_epoch"] = final_total_epochs
+                updates["total_epochs"] = final_total_epochs
+                updates["status"] = 'completed'
+                updates["completed_at"] = db.func.now()
+                updates["error_message"] = None
 
                 if updates:
-                    # 直接操作 session，因为这是最终更新
-                    self._get_and_update_task(updates, session)
-                    session.commit()
-                    self.logger.info(f"[Callback:{self.task_id}] Final metrics/info updated in DB from on_train_end.")
+                    self._execute_db_update(updates, force_update=True)
+                    self.logger.info(
+                        f"[Callback:{self.task_id}] Final metrics/info and status updated to 'completed' in DB from on_train_end. Final metrics: {merged_final_metrics if len(str(merged_final_metrics)) < 200 else str(merged_final_metrics)[:200] + '...'}")
+
+                if self.celery_task_update_state_func:
+                    celery_meta = {
+                        'type': 'training_completed',
+                        'status': 'completed',
+                        'message': '训练完成',
+                        'metrics': merged_final_metrics,
+                        'current_epoch': final_total_epochs,
+                        'total_epochs': final_total_epochs,
+                        'progress_percent': 100.0
+                    }
+                    try:
+                        self.celery_task_update_state_func(state='PROGRESS', meta=celery_meta)
+                        self.logger.info(f"[Callback:{self.task_id}] Sent training completed signal to Celery.")
+                    except Exception as e_celery:
+                        self.logger.error(
+                            f"[Callback:{self.task_id}] Error sending completed status to Celery: {e_celery}",
+                            exc_info=False)
             else:
                 self.logger.info(
-                    f"[Callback:{self.task_id}] Training ended, but task status was '{task_record.status}'. No final metric update from callback.")
-
+                    f"[Callback:{self.task_id}] Training ended, but task status was '{task_record.status}'. No final metric/status update from callback.")
         except Exception as e:
             self.logger.error(f"[Callback:{self.task_id}] Error in on_train_end: {e}", exc_info=True)
-            if session: session.rollback()
         finally:
             if session: session.close()
-            # 确保取消信号文件最终被清理
             if os.path.exists(self.cancel_signal_file):
                 try:
                     os.remove(self.cancel_signal_file)
-                    self.logger.info(f"[Callback:{self.task_id}] Cleaned up cancel signal file in on_train_end.")
-                except OSError:
-                    pass
+                    self.logger.info(
+                        f"[Callback:{self.task_id}] Cleaned up cancel signal file in on_train_end (final cleanup).")
+                except OSError as e:
+                    self.logger.error(
+                        f"[Callback:{self.task_id}] Error removing cancel signal file during final cleanup: {e}")
