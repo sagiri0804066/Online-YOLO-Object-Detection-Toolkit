@@ -1,3 +1,38 @@
-# 默认忽略的文件
-/shelf/
-/workspace.xml
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+.env
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+database.db
+migrations/
+
+# Flask Session
+.flask_session/
+
+# Celery
+celerybeat-schedule
+
+# User-generated data and models (VERY IMPORTANT!)
+# These directories are created and managed by the application at runtime.
+# They should NOT be tracked by Git.
+user_models/
+user_uploads/
+
+# Sensitive configuration file
+# You should commit a template file instead (see next step).
+config.yaml
+
+# SSL Certificates
+cert/
