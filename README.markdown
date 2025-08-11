@@ -28,7 +28,7 @@
     *   删除已完成或失败的验证任务及其关联文件。
 *   **任务管理**:
     *   用户可以查看自己创建的所有微调和验证任务。
-    *   实时（轮询或WebSocket/SSE）更新任务状态和进度。
+    *   实时轮询更新任务状态和进度。
     *   近似的排队位置信息展示。
 *   **文件管理**:
     *   用户数据隔离，每个用户拥有独立的模型和任务文件存储空间。
@@ -72,7 +72,7 @@
 │   └── utils/                # 通用工具 (如装饰器)
 ├── cert/                     # SSL证书存放目录
 ├── migrations/               # 数据库迁移脚本
-├── user_models/              # 用户数据存储根目录 (由程序创建，gitignore中应忽略具体用户数据)
+├── user_models/              # 用户数据存储根目录 (由程序创建)
 │   └── <username>/
 │       ├── inference_models/ # 用户上传的用于推理的模型
 │       ├── train/            # 微调任务相关文件
@@ -85,15 +85,15 @@
 │               ├── input/
 │               ├── dataset/
 │               └── output/
-├── user_uploads/             # 用户缓存数据存储根目录 (由程序创建，gitignore中应忽略具体用户数据)
+├── user_uploads/             # 用户缓存数据存储根目录 (由程序创建)
 ├── models/                   # 预设模型存放目录 (如yolov8n.pt)
 ├── .flask_session/           # Flask-Session文件存储目录 (gitignore中应忽略)
 ├── celery_worker.py          # Celery Worker启动脚本
 ├── config.yaml               # 应用配置文件 (数据库URI, Celery Broker, 密钥等)
 ├── main.py                   # 应用启动脚本 (使用Waitress)
 ├── requirements.txt          # Python依赖包列表
-├── README.md                 # 项目说明文件
-└── .gitignore                # Git忽略文件配置
+└── README.md                 # 项目说明文件
+
 ```
 
 ## 安装与运行
@@ -102,9 +102,9 @@
 
 *   Python 3.8+
 *   Redis 服务器 (用于Celery Broker和Result Backend)
-*   (可选) Git
+*   Git
 
-### 2. 克隆项目 (如果从Git仓库获取)
+### 2. 克隆项目
 
 ```bash
 git clone <repository_url>
@@ -129,14 +129,13 @@ pip install -r requirements.txt
 
 ### 5. 配置 `config.yaml`
 
-*   复制或重命名一个示例配置文件（如果提供的话）为 `config.yaml`。
 *   **主要配置项**:
     *   `SECRET_KEY`: 设置一个复杂且唯一的密钥。
     *   `DATABASE_URI`: 默认为 `sqlite:///./database.db`。
     *   `CELERY_BROKER_URL`: 例如 `redis://localhost:6379/0`。
     *   `CELERY_RESULT_BACKEND`: 例如 `redis://localhost:6379/1`。
     *   `MODEL_DIR`: 用户模型存储的基础路径，例如 `user_models`。
-    *   `PRESET_MODELS_DIR`: (如果使用) 预设模型存放路径，例如 `models`。
+    *   `PRESET_MODELS_DIR`:预设模型存放路径，例如 `models`。
     *   (可选) `CERT_FILE` 和 `KEY_FILE`: 如果使用HTTPS，配置SSL证书路径。
 
 ### 6. 初始化数据库
@@ -193,21 +192,12 @@ python main.py
 
 ## 贡献
 
-(如果项目是开源的，可以添加贡献指南)
+*   **此开源项目由露露个人开发**。
 
 ## 许可证
 
-(指明项目的许可证，例如 MIT, Apache 2.0 等)
+本项目根据 [MIT 许可证](LICENSE) 发布。详情请见 `LICENSE` 文件。
+
+This project is licensed under the [MIT License](LICENSE). See the `LICENSE` file for details.
 
 ```
-
-**你需要根据你的项目实际情况调整和填充这个README模板，特别是：**
-
-*   **前端技术栈**：如果你使用了特定的JS框架或库。
-*   **`requirements.txt`**：确保它是最新的。
-*   **`PRESET_MODELS_DIR` 和 `models/` 目录**：如果你的预设模型目录名称不同，或者你没有预设模型，可以调整或删除。
-*   **SSL证书**：如果你的 `main.py` 中没有直接处理HTTPS的逻辑（例如依赖反向代理），可以简化相关说明。
-*   **数据库迁移**：如果你没有使用Flask-Migrate，可以调整或删除相关说明。
-*   **贡献和许可证**：根据你的意愿添加。
-
-这个结构应该能提供一个全面的项目概览。明天我们再继续最后一个环节——填充实际的YOLO训练和验证业务逻辑！

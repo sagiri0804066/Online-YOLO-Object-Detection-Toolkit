@@ -62,7 +62,7 @@ class YoloModel:
             'stream_buffer', 'visualize', 'augment', 'agnostic_nms', 'classes',
             'retina_masks', 'boxes', 'show', 'save', 'save_txt', 'save_conf',
             'save_crop', 'hide_labels', 'hide_conf', 'line_width', 'verbose',
-            'tracker'  # 等等，具体参考 ultralyticsCBAM 文档
+            'tracker'  # 等等，具体参考 ultralytics 文档
         ]
         for key, value in config.items():
             if key in allowed_yolo_params:

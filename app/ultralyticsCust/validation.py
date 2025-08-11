@@ -63,7 +63,7 @@ def run_yolo_validation(
         # 执行验证
         metrics = model.val(**yolo_val_args)
 
-        # metrics 对象 (例如 ultralyticsCBAM.engine.results.Metrics) 包含各种指标
+        # metrics 对象 (例如 ultralytics.engine.results.Metrics) 包含各种指标
         # metrics.box.map (mAP50-95), metrics.box.map50 (mAP50), metrics.box.map75 (mAP75)
         # metrics.box.precision, metrics.box.recall
         # results.speed (preprocess, inference, postprocess times)
